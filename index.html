@@ -1,0 +1,1159 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Splitr — Split any UPI bill</title>
+<meta name="description" content="Scan a UPI QR code, split the bill into payments under any limit, and pay each one with your own UPI app.">
+<meta name="theme-color" content="#0C1210">
+<link rel="manifest" href="manifest.json">
+<link rel="icon" href="icons/icon-192.png">
+<link rel="apple-touch-icon" href="icons/icon-192.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #F6F7F2;
+    --surface: #FFFFFF;
+    --ink: #11171A;
+    --muted: #5B6773;
+    --accent: #0E8F72;
+    --accent-ink: #06322A;
+    --pending: #B5720F;
+    --success: #187A4C;
+    --danger: #B43A22;
+    --line: #E2E5DD;
+    --focus: #0E8F72;
+    color-scheme: light;
+  }
+  html.dark {
+    --bg: #0C1210;
+    --surface: #131C19;
+    --ink: #EAF0EC;
+    --muted: #8FA39A;
+    --accent: #2FD9AE;
+    --accent-ink: #06251E;
+    --pending: #E8A94E;
+    --success: #4FD98D;
+    --danger: #F1806A;
+    --line: #223028;
+    --focus: #2FD9AE;
+    color-scheme: dark;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; }
+  body {
+    font-family: 'Manrope', system-ui, -apple-system, sans-serif;
+    background: var(--bg);
+    color: var(--ink);
+    min-height: 100vh;
+    -webkit-font-smoothing: antialiased;
+    transition: background .25s ease, color .25s ease;
+  }
+  .shell {
+    max-width: 480px;
+    margin: 0 auto;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    padding: env(safe-area-inset-top) 0 env(safe-area-inset-bottom);
+  }
+  /* Header */
+  .topbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 18px 20px 8px;
+  }
+  .wordmark {
+    font-weight: 800;
+    font-size: 1.15rem;
+    letter-spacing: -0.02em;
+  }
+  .wordmark span { color: var(--accent); }
+  .icon-btn {
+    background: none;
+    border: 1px solid var(--line);
+    color: var(--ink);
+    width: 38px;
+    height: 38px;
+    border-radius: 10px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+  }
+  .icon-btn:focus-visible, button:focus-visible, input:focus-visible, a:focus-visible {
+    outline: 2px solid var(--focus);
+    outline-offset: 2px;
+  }
+
+  /* Stepper */
+  .stepper {
+    display: flex;
+    align-items: center;
+    padding: 6px 24px 18px;
+    gap: 4px;
+  }
+  .step {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 6px;
+    position: relative;
+  }
+  .step .dot {
+    width: 9px;
+    height: 9px;
+    border-radius: 50%;
+    background: var(--line);
+    transition: background .2s ease, transform .2s ease;
+    z-index: 1;
+  }
+  .step.done .dot { background: var(--accent); }
+  .step.active .dot { background: var(--accent); transform: scale(1.4); }
+  .step .rail {
+    position: absolute;
+    top: 4px;
+    left: 50%;
+    width: 100%;
+    height: 1px;
+    background: var(--line);
+  }
+  .step:first-child .rail { display: none; }
+  .step.done .rail, .step.active .rail { background: var(--accent); }
+  .step label {
+    font-size: 0.62rem;
+    color: var(--muted);
+    font-weight: 600;
+    letter-spacing: 0.01em;
+  }
+  .step.active label, .step.done label { color: var(--ink); }
+
+  main {
+    flex: 1;
+    padding: 8px 20px 32px;
+    display: flex;
+    flex-direction: column;
+  }
+  .screen { display: none; flex-direction: column; flex: 1; animation: rise .28s ease; }
+  .screen.active { display: flex; }
+  @keyframes rise { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: translateY(0); } }
+  @media (prefers-reduced-motion: reduce) {
+    .screen { animation: none; }
+    * { transition: none !important; }
+  }
+
+  h1.title { font-size: 1.4rem; font-weight: 800; letter-spacing: -0.02em; margin: 4px 0 4px; }
+  p.sub { color: var(--muted); font-size: 0.92rem; margin: 0 0 20px; line-height: 1.5; }
+
+  /* Scan screen */
+  .scan-frame {
+    position: relative;
+    width: 100%;
+    aspect-ratio: 1/1;
+    background: #000;
+    border-radius: 20px;
+    overflow: hidden;
+    border: 1px solid var(--line);
+  }
+  .scan-frame video { width: 100%; height: 100%; object-fit: cover; }
+  .scan-frame .reticle {
+    position: absolute;
+    inset: 14%;
+    border: 2px solid rgba(255,255,255,0.85);
+    border-radius: 16px;
+    box-shadow: 0 0 0 999px rgba(0,0,0,0.28);
+  }
+  .scan-frame .reticle::before, .scan-frame .reticle::after {
+    content: '';
+  }
+  .scan-hint {
+    position: absolute;
+    bottom: 14px;
+    left: 0; right: 0;
+    text-align: center;
+    color: #fff;
+    font-size: 0.8rem;
+    font-weight: 600;
+    text-shadow: 0 1px 4px rgba(0,0,0,0.5);
+  }
+  .scan-idle {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    height: 100%;
+    color: #9fb0aa;
+  }
+  .divider-row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin: 22px 0;
+    color: var(--muted);
+    font-size: 0.78rem;
+    font-weight: 600;
+  }
+  .divider-row::before, .divider-row::after {
+    content: '';
+    flex: 1;
+    height: 1px;
+    background: var(--line);
+  }
+
+  .field {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    margin-bottom: 14px;
+  }
+  .field label { font-size: 0.78rem; font-weight: 600; color: var(--muted); }
+  .field input[type="text"] {
+    background: var(--surface);
+    border: 1px solid var(--line);
+    color: var(--ink);
+    border-radius: 12px;
+    padding: 13px 14px;
+    font-size: 0.98rem;
+    font-family: inherit;
+  }
+
+  .merchant-card {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: 16px;
+    padding: 14px 16px;
+    margin-bottom: 18px;
+  }
+  .merchant-avatar {
+    width: 42px; height: 42px;
+    border-radius: 50%;
+    background: var(--accent);
+    color: var(--accent-ink);
+    display: flex; align-items: center; justify-content: center;
+    font-weight: 800;
+    flex-shrink: 0;
+  }
+  .merchant-name { font-weight: 700; font-size: 0.98rem; }
+  .merchant-vpa { font-size: 0.8rem; color: var(--muted); word-break: break-all; }
+  .merchant-edit {
+    margin-left: auto;
+    background: none; border: none; color: var(--accent);
+    font-weight: 700; font-size: 0.82rem; cursor: pointer; white-space: nowrap;
+  }
+
+  /* Amount screen */
+  .amount-input-wrap {
+    display: flex;
+    align-items: baseline;
+    justify-content: center;
+    gap: 4px;
+    padding: 28px 0 8px;
+  }
+  .rupee-sign { font-size: 2rem; font-weight: 800; color: var(--muted); }
+  #billAmount {
+    font-family: 'Manrope', sans-serif;
+    font-variant-numeric: tabular-nums;
+    font-size: 3.2rem;
+    font-weight: 800;
+    letter-spacing: -0.02em;
+    background: none;
+    border: none;
+    color: var(--ink);
+    width: 100%;
+    max-width: 260px;
+    text-align: center;
+  }
+  .limit-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: 14px;
+    padding: 12px 16px;
+    margin: 18px 0;
+  }
+  .limit-row-text { display: flex; flex-direction: column; }
+  .limit-row-text strong { font-size: 0.88rem; font-weight: 700; }
+  .limit-row-text span { font-size: 0.74rem; color: var(--muted); }
+  .limit-edit-input {
+    width: 84px;
+    text-align: right;
+    background: var(--bg);
+    border: 1px solid var(--line);
+    color: var(--ink);
+    border-radius: 8px;
+    padding: 7px 8px;
+    font-family: inherit;
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+  }
+  .preview-line {
+    font-size: 0.85rem;
+    color: var(--muted);
+    text-align: center;
+    min-height: 1.2em;
+  }
+  .preview-line strong { color: var(--ink); }
+
+  /* Split list */
+  .summary-hero {
+    text-align: center;
+    padding: 6px 0 20px;
+  }
+  .summary-hero .amount {
+    font-size: 2.6rem;
+    font-weight: 800;
+    letter-spacing: -0.02em;
+    font-variant-numeric: tabular-nums;
+  }
+  .summary-hero .meta {
+    color: var(--muted);
+    font-size: 0.85rem;
+    margin-top: 2px;
+  }
+  .progress-track {
+    height: 6px;
+    background: var(--line);
+    border-radius: 999px;
+    overflow: hidden;
+    margin: 14px 0 22px;
+  }
+  .progress-fill {
+    height: 100%;
+    background: var(--accent);
+    border-radius: 999px;
+    width: 0%;
+    transition: width .3s ease;
+  }
+  .split-list { display: flex; flex-direction: column; }
+  .split-item {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 14px 2px;
+    border-bottom: 1px solid var(--line);
+  }
+  .split-item:last-child { border-bottom: none; }
+  .split-index {
+    width: 30px; height: 30px;
+    border-radius: 50%;
+    background: var(--bg);
+    border: 1px solid var(--line);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 0.78rem; font-weight: 700; color: var(--muted);
+    flex-shrink: 0;
+  }
+  .split-main { flex: 1; min-width: 0; }
+  .split-amount { font-size: 1.15rem; font-weight: 800; font-variant-numeric: tabular-nums; }
+  .split-status { font-size: 0.74rem; font-weight: 700; margin-top: 1px; }
+  .split-status.pending { color: var(--pending); }
+  .split-status.paid { color: var(--success); }
+  .split-status.failed { color: var(--danger); }
+  .split-actions { display: flex; gap: 6px; flex-shrink: 0; }
+  .pill-btn {
+    border: 1px solid var(--line);
+    background: var(--surface);
+    color: var(--ink);
+    padding: 8px 12px;
+    border-radius: 999px;
+    font-size: 0.78rem;
+    font-weight: 700;
+    cursor: pointer;
+    white-space: nowrap;
+    font-family: inherit;
+  }
+  .pill-btn.pay { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
+  .pill-btn.mark-ok { color: var(--success); border-color: var(--success); background: none; }
+  .pill-btn.mark-fail { color: var(--danger); border-color: var(--danger); background: none; }
+  .icon-only { width: 34px; padding: 0; display: flex; align-items: center; justify-content: center; }
+
+  /* Buttons */
+  .primary-btn {
+    background: var(--accent);
+    color: var(--accent-ink);
+    border: none;
+    padding: 15px 20px;
+    border-radius: 14px;
+    font-size: 1rem;
+    font-weight: 800;
+    font-family: inherit;
+    cursor: pointer;
+    width: 100%;
+  }
+  .primary-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+  .secondary-btn {
+    background: none;
+    border: 1px solid var(--line);
+    color: var(--ink);
+    padding: 14px 20px;
+    border-radius: 14px;
+    font-size: 0.95rem;
+    font-weight: 700;
+    font-family: inherit;
+    cursor: pointer;
+    width: 100%;
+  }
+  .text-btn {
+    background: none; border: none; color: var(--muted);
+    font-size: 0.85rem; font-weight: 700; padding: 10px; cursor: pointer; font-family: inherit;
+  }
+  .btn-row { display: flex; flex-direction: column; gap: 10px; margin-top: auto; padding-top: 18px; }
+
+  .banner {
+    display: flex;
+    gap: 10px;
+    align-items: flex-start;
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: 14px;
+    padding: 12px 14px;
+    font-size: 0.8rem;
+    color: var(--muted);
+    line-height: 1.45;
+    margin-bottom: 16px;
+  }
+  .banner strong { color: var(--ink); }
+
+  .error-text {
+    color: var(--danger);
+    font-size: 0.8rem;
+    font-weight: 600;
+    min-height: 1.1em;
+    margin-top: -6px;
+    margin-bottom: 8px;
+  }
+
+  /* Done screen */
+  .done-wrap {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    gap: 6px;
+  }
+  .done-badge {
+    width: 74px; height: 74px;
+    border-radius: 50%;
+    background: var(--accent);
+    color: var(--accent-ink);
+    display: flex; align-items: center; justify-content: center;
+    margin-bottom: 10px;
+  }
+  .done-badge svg { width: 34px; height: 34px; }
+  .done-stats {
+    display: flex;
+    gap: 22px;
+    margin-top: 22px;
+  }
+  .done-stat strong { display: block; font-size: 1.3rem; font-weight: 800; }
+  .done-stat span { font-size: 0.72rem; color: var(--muted); font-weight: 600; }
+
+  /* History */
+  .history-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 13px 2px;
+    border-bottom: 1px solid var(--line);
+  }
+  .history-item:last-child { border-bottom: none; }
+  .history-main strong { display: block; font-size: 0.92rem; font-weight: 700; }
+  .history-main span { font-size: 0.74rem; color: var(--muted); }
+  .history-amount { font-weight: 800; font-variant-numeric: tabular-nums; }
+  .empty-state {
+    text-align: center;
+    color: var(--muted);
+    font-size: 0.88rem;
+    padding: 40px 10px;
+  }
+
+  .sr-only {
+    position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
+    overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; border: 0;
+  }
+
+  .toast {
+    position: fixed;
+    bottom: 24px;
+    left: 50%;
+    transform: translateX(-50%) translateY(20px);
+    background: var(--ink);
+    color: var(--bg);
+    padding: 11px 18px;
+    border-radius: 999px;
+    font-size: 0.85rem;
+    font-weight: 700;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity .25s ease, transform .25s ease;
+    z-index: 50;
+    max-width: 88%;
+    text-align: center;
+  }
+  .toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+</style>
+</head>
+<body>
+<div class="shell">
+  <div class="topbar">
+    <div class="wordmark">Split<span>r</span></div>
+    <button class="icon-btn" id="themeToggle" aria-label="Toggle dark mode" title="Toggle theme">
+      <svg id="themeIcon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"></circle><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"></path></svg>
+    </button>
+  </div>
+
+  <nav class="stepper" aria-label="Progress">
+    <div class="step active" data-step="scan"><div class="rail"></div><div class="dot"></div><label>Scan</label></div>
+    <div class="step" data-step="amount"><div class="rail"></div><div class="dot"></div><label>Amount</label></div>
+    <div class="step" data-step="split"><div class="rail"></div><div class="dot"></div><label>Split</label></div>
+    <div class="step" data-step="pay"><div class="rail"></div><div class="dot"></div><label>Pay</label></div>
+    <div class="step" data-step="done"><div class="rail"></div><div class="dot"></div><label>Done</label></div>
+  </nav>
+
+  <main>
+
+    <!-- SCREEN 1: SCAN -->
+    <section class="screen active" id="screen-scan">
+      <h1 class="title">Scan the merchant's QR</h1>
+      <p class="sub">Point your camera at any standard UPI QR code. Nothing you scan ever leaves this device.</p>
+
+      <div class="scan-frame" id="scanFrame">
+        <div class="scan-idle" id="scanIdle">
+          <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M4 7V5a1 1 0 011-1h2M20 7V5a1 1 0 00-1-1h-2M4 17v2a1 1 0 001 1h2M20 17v2a1 1 0 01-1 1h-2"/><rect x="7" y="7" width="4" height="4" rx="0.5"/><rect x="13" y="7" width="4" height="4" rx="0.5"/><rect x="7" y="13" width="4" height="4" rx="0.5"/></svg>
+          <span>Camera is off</span>
+        </div>
+        <video id="qrVideo" playsinline muted style="display:none;"></video>
+        <div class="reticle" id="reticle" style="display:none;"></div>
+        <div class="scan-hint" id="scanHint" style="display:none;">Align QR code within the frame</div>
+      </div>
+
+      <div id="scanError" class="error-text" style="margin-top:10px;"></div>
+
+      <button class="primary-btn" id="startScanBtn" style="margin-top:16px;">Start camera</button>
+
+      <div class="divider-row">or enter manually</div>
+
+      <div class="field">
+        <label for="manualVpa">Merchant UPI ID</label>
+        <input type="text" id="manualVpa" placeholder="merchant@bankupi" autocomplete="off" autocapitalize="off">
+      </div>
+      <div class="field">
+        <label for="manualName">Merchant name (optional)</label>
+        <input type="text" id="manualName" placeholder="e.g. Sharma General Store" autocomplete="off">
+      </div>
+      <button class="secondary-btn" id="useManualBtn">Use this UPI ID</button>
+    </section>
+
+    <!-- SCREEN 2: AMOUNT -->
+    <section class="screen" id="screen-amount">
+      <h1 class="title">Enter the bill amount</h1>
+      <p class="sub">We'll split this into payments that fit your per-transaction limit.</p>
+
+      <div class="merchant-card">
+        <div class="merchant-avatar" id="merchantInitial">?</div>
+        <div>
+          <div class="merchant-name" id="merchantNameDisplay">Merchant</div>
+          <div class="merchant-vpa" id="merchantVpaDisplay">—</div>
+        </div>
+        <button class="merchant-edit" id="changeMerchantBtn">Change</button>
+      </div>
+
+      <div class="amount-input-wrap">
+        <span class="rupee-sign">₹</span>
+        <input type="text" inputmode="decimal" id="billAmount" placeholder="0" autocomplete="off">
+      </div>
+      <div class="error-text" id="amountError" style="text-align:center;"></div>
+
+      <div class="limit-row">
+        <div class="limit-row-text">
+          <strong>Per-payment limit</strong>
+          <span>Each split will be ₹<span id="limitLabel">2,000</span> or less</span>
+        </div>
+        <input type="text" inputmode="numeric" class="limit-edit-input" id="limitInput" value="2000">
+      </div>
+
+      <p class="preview-line" id="previewLine">&nbsp;</p>
+
+      <div class="btn-row">
+        <button class="primary-btn" id="toSplitBtn" disabled>Split bill</button>
+        <button class="text-btn" id="backToScanBtn">Back</button>
+      </div>
+    </section>
+
+    <!-- SCREEN 3: SPLIT / PAY -->
+    <section class="screen" id="screen-pay">
+      <h1 class="title">Pay in parts</h1>
+      <p class="sub" id="paySub">Tap each payment to open it in your UPI app, then mark it once it's done.</p>
+
+      <div class="summary-hero">
+        <div class="amount" id="totalAmountDisplay">₹0</div>
+        <div class="meta" id="paySummaryMeta">0 of 0 paid</div>
+        <div class="progress-track"><div class="progress-fill" id="progressFill"></div></div>
+      </div>
+
+      <div class="split-list" id="splitList"></div>
+
+      <div class="btn-row">
+        <button class="primary-btn" id="finishBtn" disabled>Finish</button>
+        <button class="text-btn" id="cancelSessionBtn">Cancel this split</button>
+      </div>
+    </section>
+
+    <!-- SCREEN 4: DONE -->
+    <section class="screen" id="screen-done">
+      <div class="done-wrap">
+        <div class="done-badge">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>
+        </div>
+        <h1 class="title" style="margin-bottom:0;">Split complete</h1>
+        <p class="sub" id="doneSub">All payments recorded.</p>
+        <div class="done-stats">
+          <div class="done-stat"><strong id="doneTotal">₹0</strong><span>Total billed</span></div>
+          <div class="done-stat"><strong id="donePaid">0</strong><span>Marked paid</span></div>
+          <div class="done-stat"><strong id="doneFailed">0</strong><span>Marked failed</span></div>
+        </div>
+      </div>
+      <div class="btn-row">
+        <button class="primary-btn" id="newSplitBtn">Start a new split</button>
+        <button class="text-btn" id="viewHistoryBtn">View history</button>
+      </div>
+    </section>
+
+    <!-- SCREEN 5: HISTORY -->
+    <section class="screen" id="screen-history">
+      <h1 class="title">History</h1>
+      <p class="sub">Stored only on this device. Clearing your browser data will erase it.</p>
+      <div id="historyList"></div>
+      <div class="btn-row">
+        <button class="secondary-btn" id="clearHistoryBtn">Clear history</button>
+        <button class="text-btn" id="closeHistoryBtn">Close</button>
+      </div>
+    </section>
+
+  </main>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script src="https://cdn.jsdelivr.net/npm/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
+<script>
+(function () {
+  "use strict";
+
+  /* ---------- Constants & state ---------- */
+  var DEFAULT_LIMIT = 2000;
+  var STORAGE_KEY = "splitr_history_v1";
+  var THEME_KEY = "splitr_theme";
+
+  var state = {
+    vpa: "",
+    name: "",
+    billAmount: 0,
+    limit: DEFAULT_LIMIT,
+    splits: [], // { amount, status: 'pending'|'paid'|'failed' }
+    qrScanner: null,
+    scanning: false
+  };
+
+  /* ---------- Utilities ---------- */
+  function $(id) { return document.getElementById(id); }
+
+  function formatINR(amount) {
+    // Indian digit grouping, up to 2 decimals, trims trailing .00
+    var isNeg = amount < 0;
+    amount = Math.abs(amount);
+    var fixed = amount.toFixed(2);
+    var parts = fixed.split(".");
+    var intPart = parts[0];
+    var dec = parts[1];
+    var lastThree = intPart.length > 3 ? intPart.slice(-3) : intPart;
+    var rest = intPart.length > 3 ? intPart.slice(0, -3) : "";
+    if (rest) {
+      lastThree = "," + lastThree;
+      rest = rest.replace(/\B(?=(\d{2})+(?!\d))/g, ",");
+    }
+    var grouped = rest + lastThree;
+    var out = "₹" + grouped + (dec === "00" ? "" : "." + dec);
+    return (isNeg ? "-" : "") + out;
+  }
+
+  function toPaise(rupees) { return Math.round(rupees * 100); }
+  function toRupees(paise) { return paise / 100; }
+
+  function showToast(msg) {
+    var t = $("toast");
+    t.textContent = msg;
+    t.classList.add("show");
+    clearTimeout(showToast._timer);
+    showToast._timer = setTimeout(function () { t.classList.remove("show"); }, 2200);
+  }
+
+  /* ---------- Core split algorithm ----------
+     Guarantees:
+       sum(all split amounts) == bill amount
+       every split amount <= configured limit
+     Strategy: greedy fixed-size chunks at the limit, remainder last.
+  */
+  function splitBill(totalRupees, limitRupees) {
+    var totalPaise = toPaise(totalRupees);
+    var limitPaise = toPaise(limitRupees);
+    if (!isFinite(totalPaise) || totalPaise <= 0) throw new Error("Enter an amount greater than ₹0");
+    if (!isFinite(limitPaise) || limitPaise <= 0) throw new Error("Limit must be greater than ₹0");
+
+    var parts = [];
+    var remaining = totalPaise;
+    while (remaining > limitPaise) {
+      parts.push(limitPaise);
+      remaining -= limitPaise;
+    }
+    if (remaining > 0) parts.push(remaining);
+
+    // Safety-check invariants before returning
+    var sum = parts.reduce(function (a, b) { return a + b; }, 0);
+    if (sum !== totalPaise) throw new Error("Internal split error: totals do not match");
+    for (var i = 0; i < parts.length; i++) {
+      if (parts[i] > limitPaise) throw new Error("Internal split error: limit exceeded");
+    }
+    return parts.map(toRupees);
+  }
+
+  /* ---------- UPI intent parsing & generation ---------- */
+  function parseUpiUri(text) {
+    // Expect something like upi://pay?pa=...&pn=...&mc=...
+    var m = text.match(/^[a-zA-Z0-9.+-]+:\/\/[^?]*\?(.*)$/);
+    var query = m ? m[1] : (text.indexOf("=") !== -1 ? text : null);
+    if (!query) return null;
+    var params = {};
+    query.split("&").forEach(function (pair) {
+      var kv = pair.split("=");
+      if (kv.length < 2) return;
+      var k = decodeURIComponent(kv[0]);
+      var v = decodeURIComponent(kv.slice(1).join("=").replace(/\+/g, " "));
+      params[k] = v;
+    });
+    if (!params.pa) return null;
+    return { vpa: params.pa, name: params.pn || "" };
+  }
+
+  function buildUpiUri(vpa, name, amount, note) {
+    var params = [
+      "pa=" + encodeURIComponent(vpa),
+      "pn=" + encodeURIComponent(name || "Merchant"),
+      "am=" + encodeURIComponent(amount.toFixed(2)),
+      "cu=INR",
+      "tn=" + encodeURIComponent(note || "")
+    ];
+    return "upi://pay?" + params.join("&");
+  }
+
+  /* ---------- Screen / step navigation ---------- */
+  var screenOrder = ["scan", "amount", "pay", "done"];
+  function showScreen(name) {
+    document.querySelectorAll(".screen").forEach(function (s) { s.classList.remove("active"); });
+    $("screen-" + name).classList.add("active");
+    updateStepper(name);
+    if (name !== "scan") stopScanner();
+  }
+
+  function updateStepper(activeName) {
+    var mapping = { scan: "scan", amount: "amount", pay: "split", done: "done", history: null };
+    var current = mapping[activeName];
+    var order = ["scan", "amount", "split", "pay", "done"];
+    // "pay" screen covers both split-preview and payment; treat pay-in-progress as 'pay' after first mark
+    var idx = order.indexOf(current === "split" ? (state.anyPaid ? "pay" : "split") : current);
+    document.querySelectorAll(".step").forEach(function (el, i) {
+      el.classList.remove("active", "done");
+      if (current === null) return;
+      if (i < idx) el.classList.add("done");
+      else if (i === idx) el.classList.add("active");
+    });
+  }
+
+  /* ---------- Theme ---------- */
+  function applyTheme(mode) {
+    document.documentElement.classList.toggle("dark", mode === "dark");
+    localStorage.setItem(THEME_KEY, mode);
+  }
+  function initTheme() {
+    var saved = localStorage.getItem(THEME_KEY);
+    if (saved) { applyTheme(saved); return; }
+    var prefersDark = window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches;
+    applyTheme(prefersDark ? "dark" : "light");
+  }
+  $("themeToggle").addEventListener("click", function () {
+    var isDark = document.documentElement.classList.contains("dark");
+    applyTheme(isDark ? "light" : "dark");
+  });
+
+  /* ---------- QR scanning ---------- */
+  function startScanner() {
+    $("scanError").textContent = "";
+    if (typeof Html5Qrcode === "undefined") {
+      $("scanError").textContent = "Camera library failed to load. Check your connection and try again, or enter the UPI ID manually below.";
+      return;
+    }
+    $("scanIdle").style.display = "none";
+    $("qrVideo").style.display = "none"; // html5-qrcode injects its own video/canvas
+    var readerRegionId = "qrRegion";
+    var frame = $("scanFrame");
+    if (!$(readerRegionId)) {
+      var div = document.createElement("div");
+      div.id = readerRegionId;
+      div.style.width = "100%";
+      div.style.height = "100%";
+      frame.insertBefore(div, frame.firstChild);
+    }
+    $("reticle").style.display = "block";
+    $("scanHint").style.display = "block";
+    $("startScanBtn").textContent = "Stop camera";
+    state.scanning = true;
+
+    state.qrScanner = new Html5Qrcode(readerRegionId, { verbose: false });
+    var config = { fps: 10, qrbox: { width: 220, height: 220 }, aspectRatio: 1.0 };
+
+    state.qrScanner.start(
+      { facingMode: "environment" },
+      config,
+      function onScanSuccess(decodedText) {
+        var parsed = parseUpiUri(decodedText);
+        if (!parsed) {
+          $("scanError").textContent = "That doesn't look like a UPI QR code. Try again or enter details manually.";
+          return;
+        }
+        handleMerchantResolved(parsed.vpa, parsed.name);
+        stopScanner();
+      },
+      function onScanFailure() { /* fires continuously while no code is found — ignore */ }
+    ).catch(function (err) {
+      state.scanning = false;
+      $("startScanBtn").textContent = "Start camera";
+      $("scanIdle").style.display = "flex";
+      $("reticle").style.display = "none";
+      $("scanHint").style.display = "none";
+      var msg = "Couldn't access the camera.";
+      if (String(err).toLowerCase().indexOf("permission") !== -1 || String(err).toLowerCase().indexOf("notallowed") !== -1) {
+        msg = "Camera permission was denied. Allow camera access in your browser settings, or enter the UPI ID manually below.";
+      } else if (location.protocol !== "https:" && location.hostname !== "localhost") {
+        msg = "Camera access needs HTTPS. Once this is deployed on GitHub Pages it will work automatically.";
+      }
+      $("scanError").textContent = msg;
+    });
+  }
+
+  function stopScanner() {
+    if (state.qrScanner && state.scanning) {
+      state.qrScanner.stop().then(function () {
+        state.qrScanner.clear();
+      }).catch(function () {});
+    }
+    state.scanning = false;
+    $("startScanBtn").textContent = "Start camera";
+    $("reticle").style.display = "none";
+    $("scanHint").style.display = "none";
+    var region = $("qrRegion");
+    if (region) region.remove();
+    $("scanIdle").style.display = "flex";
+  }
+
+  $("startScanBtn").addEventListener("click", function () {
+    if (state.scanning) stopScanner();
+    else startScanner();
+  });
+
+  /* ---------- Manual entry ---------- */
+  $("useManualBtn").addEventListener("click", function () {
+    var vpa = $("manualVpa").value.trim();
+    var name = $("manualName").value.trim();
+    if (!vpa || vpa.indexOf("@") === -1) {
+      $("scanError").textContent = "Enter a valid UPI ID, e.g. name@bank";
+      return;
+    }
+    $("scanError").textContent = "";
+    handleMerchantResolved(vpa, name);
+  });
+
+  function handleMerchantResolved(vpa, name) {
+    state.vpa = vpa;
+    state.name = name || vpa.split("@")[0];
+    $("merchantNameDisplay").textContent = state.name;
+    $("merchantVpaDisplay").textContent = state.vpa;
+    $("merchantInitial").textContent = state.name.charAt(0).toUpperCase();
+    showScreen("amount");
+    setTimeout(function () { $("billAmount").focus(); }, 250);
+  }
+
+  $("changeMerchantBtn").addEventListener("click", function () { showScreen("scan"); });
+  $("backToScanBtn").addEventListener("click", function () { showScreen("scan"); });
+
+  /* ---------- Amount screen ---------- */
+  function sanitizeDecimalInput(el) {
+    el.value = el.value.replace(/[^0-9.]/g, "").replace(/(\..*)\./g, "$1");
+  }
+  $("billAmount").addEventListener("input", function () {
+    sanitizeDecimalInput(this);
+    validateAmountScreen();
+  });
+  $("limitInput").addEventListener("input", function () {
+    this.value = this.value.replace(/[^0-9]/g, "");
+    var v = parseInt(this.value || "0", 10);
+    $("limitLabel").textContent = v ? v.toLocaleString("en-IN") : "0";
+    validateAmountScreen();
+  });
+
+  function validateAmountScreen() {
+    var amount = parseFloat($("billAmount").value);
+    var limit = parseInt($("limitInput").value || "0", 10);
+    var errEl = $("amountError");
+    var preview = $("previewLine");
+    errEl.textContent = "";
+    preview.innerHTML = "&nbsp;";
+    $("toSplitBtn").disabled = true;
+
+    if (!$("billAmount").value) return;
+    if (isNaN(amount) || amount <= 0) {
+      errEl.textContent = "Enter an amount greater than ₹0";
+      return;
+    }
+    if (amount > 10000000) {
+      errEl.textContent = "That's a very large bill — double-check the amount";
+      return;
+    }
+    if (!limit || limit <= 0) {
+      errEl.textContent = "Per-payment limit must be greater than ₹0";
+      return;
+    }
+    try {
+      var parts = splitBill(amount, limit);
+      var n = parts.length;
+      preview.innerHTML = n === 1
+        ? "Paid in <strong>1 payment</strong> of " + formatINR(parts[0])
+        : "Split into <strong>" + n + " payments</strong> of up to " + formatINR(limit) + " each";
+      $("toSplitBtn").disabled = false;
+    } catch (e) {
+      errEl.textContent = e.message;
+    }
+  }
+
+  $("toSplitBtn").addEventListener("click", function () {
+    var amount = parseFloat($("billAmount").value);
+    var limit = parseInt($("limitInput").value, 10);
+    try {
+      var parts = splitBill(amount, limit);
+      state.billAmount = amount;
+      state.limit = limit;
+      state.splits = parts.map(function (p) { return { amount: p, status: "pending" }; });
+      state.anyPaid = false;
+      renderSplitScreen();
+      showScreen("pay");
+    } catch (e) {
+      $("amountError").textContent = e.message;
+    }
+  });
+
+  /* ---------- Split / Pay screen ---------- */
+  function renderSplitScreen() {
+    $("totalAmountDisplay").textContent = formatINR(state.billAmount);
+    var list = $("splitList");
+    list.innerHTML = "";
+    state.splits.forEach(function (split, idx) {
+      var row = document.createElement("div");
+      row.className = "split-item";
+
+      var indexEl = document.createElement("div");
+      indexEl.className = "split-index";
+      indexEl.textContent = idx + 1;
+
+      var main = document.createElement("div");
+      main.className = "split-main";
+      var amountEl = document.createElement("div");
+      amountEl.className = "split-amount";
+      amountEl.textContent = formatINR(split.amount);
+      var statusEl = document.createElement("div");
+      statusEl.className = "split-status " + split.status;
+      statusEl.textContent = split.status === "pending" ? "Not paid yet" : (split.status === "paid" ? "Marked paid" : "Marked failed");
+      main.appendChild(amountEl);
+      main.appendChild(statusEl);
+
+      var actions = document.createElement("div");
+      actions.className = "split-actions";
+
+      if (split.status === "pending") {
+        var payBtn = document.createElement("button");
+        payBtn.className = "pill-btn pay";
+        payBtn.textContent = "Pay";
+        payBtn.addEventListener("click", function () { openUpiApp(idx); });
+        var okBtn = document.createElement("button");
+        okBtn.className = "pill-btn icon-only mark-ok";
+        okBtn.setAttribute("aria-label", "Mark payment " + (idx + 1) + " as paid");
+        okBtn.innerHTML = "✓";
+        okBtn.addEventListener("click", function () { setSplitStatus(idx, "paid"); });
+        var failBtn = document.createElement("button");
+        failBtn.className = "pill-btn icon-only mark-fail";
+        failBtn.setAttribute("aria-label", "Mark payment " + (idx + 1) + " as failed");
+        failBtn.innerHTML = "✕";
+        failBtn.addEventListener("click", function () { setSplitStatus(idx, "failed"); });
+        actions.appendChild(payBtn);
+        actions.appendChild(okBtn);
+        actions.appendChild(failBtn);
+      } else {
+        var retryBtn = document.createElement("button");
+        retryBtn.className = "pill-btn";
+        retryBtn.textContent = "Reset";
+        retryBtn.addEventListener("click", function () { setSplitStatus(idx, "pending"); });
+        actions.appendChild(retryBtn);
+      }
+
+      row.appendChild(indexEl);
+      row.appendChild(main);
+      row.appendChild(actions);
+      list.appendChild(row);
+    });
+    updatePaySummary();
+  }
+
+  function setSplitStatus(idx, status) {
+    state.splits[idx].status = status;
+    if (status !== "pending") state.anyPaid = true;
+    renderSplitScreen();
+  }
+
+  function updatePaySummary() {
+    var paid = state.splits.filter(function (s) { return s.status === "paid"; }).length;
+    var failed = state.splits.filter(function (s) { return s.status === "failed"; }).length;
+    var resolved = paid + failed;
+    var total = state.splits.length;
+    $("paySummaryMeta").textContent = paid + " of " + total + " paid" + (failed ? " · " + failed + " failed" : "");
+    $("progressFill").style.width = (resolved / total * 100) + "%";
+    $("finishBtn").disabled = resolved < total;
+    updateStepper("pay");
+  }
+
+  function openUpiApp(idx) {
+    var split = state.splits[idx];
+    var note = "Split " + (idx + 1) + " of " + state.splits.length + (state.name ? " to " + state.name : "");
+    var uri = buildUpiUri(state.vpa, state.name, split.amount, note);
+    window.location.href = uri;
+    // Give the user a nudge in case no UPI app is installed to catch the intent
+    setTimeout(function () {
+      showToast("If nothing opened, no UPI app was found on this device.");
+    }, 900);
+  }
+
+  $("finishBtn").addEventListener("click", function () {
+    saveToHistory();
+    var paid = state.splits.filter(function (s) { return s.status === "paid"; }).length;
+    var failed = state.splits.filter(function (s) { return s.status === "failed"; }).length;
+    $("doneTotal").textContent = formatINR(state.billAmount);
+    $("donePaid").textContent = paid;
+    $("doneFailed").textContent = failed;
+    $("doneSub").textContent = failed
+      ? "Recorded on this device. You can retry failed payments any time from history."
+      : "Recorded on this device. Nice work.";
+    showScreen("done");
+  });
+
+  $("cancelSessionBtn").addEventListener("click", function () {
+    if (confirm("Discard this split? Nothing has been saved yet.")) {
+      resetSession();
+      showScreen("scan");
+    }
+  });
+
+  $("newSplitBtn").addEventListener("click", function () {
+    resetSession();
+    showScreen("scan");
+  });
+
+  function resetSession() {
+    state.vpa = ""; state.name = ""; state.billAmount = 0; state.splits = []; state.anyPaid = false;
+    $("billAmount").value = "";
+    $("manualVpa").value = "";
+    $("manualName").value = "";
+    $("amountError").textContent = "";
+    $("previewLine").innerHTML = "&nbsp;";
+    $("toSplitBtn").disabled = true;
+  }
+
+  /* ---------- History (localStorage only) ---------- */
+  function loadHistory() {
+    try {
+      return JSON.parse(localStorage.getItem(STORAGE_KEY) || "[]");
+    } catch (e) { return []; }
+  }
+  function saveToHistory() {
+    var history = loadHistory();
+    history.unshift({
+      name: state.name,
+      vpa: state.vpa,
+      total: state.billAmount,
+      limit: state.limit,
+      splits: state.splits.map(function (s) { return { amount: s.amount, status: s.status }; }),
+      timestamp: Date.now()
+    });
+    if (history.length > 100) history = history.slice(0, 100);
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(history));
+  }
+  function renderHistory() {
+    var history = loadHistory();
+    var container = $("historyList");
+    container.innerHTML = "";
+    if (!history.length) {
+      container.innerHTML = '<div class="empty-state">No split payments yet. Once you finish a split, it will show up here.</div>';
+      return;
+    }
+    history.forEach(function (h) {
+      var item = document.createElement("div");
+      item.className = "history-item";
+      var date = new Date(h.timestamp);
+      var paid = h.splits.filter(function (s) { return s.status === "paid"; }).length;
+      var main = document.createElement("div");
+      main.className = "history-main";
+      var strong = document.createElement("strong");
+      strong.textContent = h.name || h.vpa;
+      var span = document.createElement("span");
+      span.textContent = date.toLocaleDateString("en-IN", { day: "numeric", month: "short" }) + " · " + paid + "/" + h.splits.length + " paid";
+      main.appendChild(strong); main.appendChild(span);
+      var amt = document.createElement("div");
+      amt.className = "history-amount";
+      amt.textContent = formatINR(h.total);
+      item.appendChild(main); item.appendChild(amt);
+      container.appendChild(item);
+    });
+  }
+  $("viewHistoryBtn").addEventListener("click", function () {
+    renderHistory();
+    showScreen("history");
+  });
+  $("closeHistoryBtn").addEventListener("click", function () { showScreen("scan"); });
+  $("clearHistoryBtn").addEventListener("click", function () {
+    if (confirm("Clear all local history? This can't be undone.")) {
+      localStorage.removeItem(STORAGE_KEY);
+      renderHistory();
+      showToast("History cleared");
+    }
+  });
+
+  /* ---------- Init ---------- */
+  initTheme();
+  showScreen("scan");
+
+  if ("serviceWorker" in navigator) {
+    window.addEventListener("load", function () {
+      navigator.serviceWorker.register("sw.js").catch(function () {});
+    });
+  }
+})();
+</script>
+</body>
+</html>
