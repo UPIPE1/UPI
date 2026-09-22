@@ -526,7 +526,7 @@
     <!-- SCREEN 1: SCAN -->
     <section class="screen active" id="screen-scan">
       <h1 class="title">Scan the merchant's QR</h1>
-      <p class="sub">Point your camera at any standard UPI QR code. Nothing you scan ever leaves this device.</p>
+      <p class="sub">Works with UPI deep-link QRs and BharatQR/EMVCo-style bank &amp; merchant QRs. Nothing you scan ever leaves this device.</p>
 
       <div class="scan-frame" id="scanFrame">
         <div class="scan-idle" id="scanIdle">
@@ -541,6 +541,9 @@
       <div id="scanError" class="error-text" style="margin-top:10px;"></div>
 
       <button class="primary-btn" id="startScanBtn" style="margin-top:16px;">Start camera</button>
+      <button class="secondary-btn" id="uploadQrBtn" style="margin-top:10px;">Upload QR image</button>
+      <input type="file" id="qrFileInput" accept="image/*" style="display:none;">
+      <div id="qrFileRegion" style="display:none;"></div>
 
       <div class="divider-row">or enter manually</div>
 
@@ -728,11 +731,27 @@
     return parts.map(toRupees);
   }
 
-  /* ---------- UPI intent parsing & generation ---------- */
-  function parseUpiUri(text) {
-    // Expect something like upi://pay?pa=...&pn=...&mc=...
+  /* ---------- Payment QR parsing ----------
+     Supports two families of QR content, and never invents a UPI ID that
+     isn't actually present in the scanned data:
+
+     1. UPI deep-link URIs, e.g.  upi://pay?pa=merchant@bank&pn=Name&am=..&cu=INR
+        (also covers the handful of bank apps that use a different scheme
+        but the same pa=/pn=/am=/cu= query parameters)
+
+     2. EMVCo "Merchant Presented Mode" QR — the TLV-based format behind
+        BharatQR and most bank/PoS-issued static or dynamic UPI QR stickers,
+        which always starts with the Payload Format Indicator "000201...".
+        The UPI VPA lives inside one of the nested "Merchant Account
+        Information" templates (tags 02–51); which exact tag a given bank
+        uses varies, so we search all of them for a value that is — or
+        contains — a valid-looking VPA, rather than assuming one tag number.
+  */
+
+  function parseUpiUriFormat(text) {
+    // Expect something like upi://pay?pa=...&pn=...&am=...&cu=...
     var m = text.match(/^[a-zA-Z0-9.+-]+:\/\/[^?]*\?(.*)$/);
-    var query = m ? m[1] : (text.indexOf("=") !== -1 ? text : null);
+    var query = m ? m[1] : (text.indexOf("pa=") !== -1 ? text : null);
     if (!query) return null;
     var params = {};
     query.split("&").forEach(function (pair) {
@@ -742,8 +761,106 @@
       var v = decodeURIComponent(kv.slice(1).join("=").replace(/\+/g, " "));
       params[k] = v;
     });
-    if (!params.pa) return null;
-    return { vpa: params.pa, name: params.pn || "" };
+    if (!params.pa) return null; // no payee address present — don't guess one
+    var amount = params.am ? parseFloat(params.am) : null;
+    return {
+      format: "UPI link",
+      vpa: params.pa,
+      name: params.pn || "",
+      amount: (amount && amount > 0) ? amount : null,
+      currency: params.cu || null,
+      crcValid: null
+    };
+  }
+
+  var VPA_PATTERN = /[a-zA-Z0-9.\-_]{2,256}@[a-zA-Z][a-zA-Z0-9]{1,64}/;
+
+  // Minimal TLV (tag-length-value) reader for EMVCo-style payloads:
+  // every field is a 2-digit tag, a 2-digit length, then that many chars of value.
+  function parseTLV(data) {
+    var result = {};
+    var i = 0;
+    while (i + 4 <= data.length) {
+      var tag = data.substr(i, 2);
+      var len = parseInt(data.substr(i + 2, 2), 10);
+      if (!/^\d{2}$/.test(tag) || isNaN(len)) break;
+      var value = data.substr(i + 4, len);
+      if (value.length !== len) break; // truncated or corrupt — stop rather than misread
+      result[tag] = value;
+      i += 4 + len;
+    }
+    return result;
+  }
+
+  function findVpaInTemplate(rawValue) {
+    // A compliant "Merchant Account Information" template is itself TLV,
+    // typically with a GUID at subtag 00 and network-specific fields after it.
+    var nested = parseTLV(rawValue);
+    var keys = Object.keys(nested);
+    for (var k = 0; k < keys.length; k++) {
+      if (VPA_PATTERN.test(nested[keys[k]])) return nested[keys[k]].match(VPA_PATTERN)[0];
+    }
+    // Fall back to scanning the raw template text directly, in case a bank's
+    // implementation doesn't nest it in valid TLV.
+    var m = rawValue.match(VPA_PATTERN);
+    return m ? m[0] : null;
+  }
+
+  function crc16ccitt(str) {
+    var crc = 0xFFFF;
+    for (var i = 0; i < str.length; i++) {
+      crc ^= (str.charCodeAt(i) << 8);
+      for (var j = 0; j < 8; j++) {
+        crc = (crc & 0x8000) ? ((crc << 1) ^ 0x1021) & 0xFFFF : (crc << 1) & 0xFFFF;
+      }
+    }
+    return crc;
+  }
+
+  function parseEmvQr(text) {
+    var clean = text.trim();
+    var root = parseTLV(clean);
+    // Tag 00 (Payload Format Indicator) is fixed to "01" for every EMVCo QR —
+    // this is what distinguishes the format from plain text or other schemes.
+    if (root["00"] !== "01") return null;
+
+    var vpa = null;
+    for (var t = 2; t <= 51; t++) {
+      var tag = (t < 10 ? "0" : "") + t;
+      if (root[tag]) {
+        var found = findVpaInTemplate(root[tag]);
+        if (found) { vpa = found; break; }
+      }
+    }
+    if (!vpa) return null; // no UPI-style destination found anywhere — don't fabricate one
+
+    var amount = root["54"] ? parseFloat(root["54"]) : null;
+    var currencyCode = root["53"] || null;
+    var currency = currencyCode === "356" ? "INR" : (currencyCode ? ("ISO " + currencyCode) : null);
+
+    // Best-effort integrity check — never blocks parsing, just informs the user.
+    var crcValid = null;
+    if (root["63"] && root["63"].length === 4 && clean.slice(-8, -4) === "6304") {
+      var dataForCrc = clean.slice(0, -4);
+      var computed = crc16ccitt(dataForCrc).toString(16).toUpperCase();
+      while (computed.length < 4) computed = "0" + computed;
+      crcValid = (computed === root["63"].toUpperCase());
+    }
+
+    return {
+      format: "EMVCo/BharatQR",
+      vpa: vpa,
+      name: root["59"] || "",
+      amount: (amount && amount > 0) ? amount : null,
+      currency: currency,
+      crcValid: crcValid
+    };
+  }
+
+  function parsePaymentQr(text) {
+    var trimmed = (text || "").trim();
+    if (!trimmed) return null;
+    return parseUpiUriFormat(trimmed) || parseEmvQr(trimmed);
   }
 
   function buildUpiUri(vpa, name, amount, note) {
@@ -826,12 +943,12 @@
       { facingMode: "environment" },
       config,
       function onScanSuccess(decodedText) {
-        var parsed = parseUpiUri(decodedText);
+        var parsed = parsePaymentQr(decodedText);
         if (!parsed) {
-          $("scanError").textContent = "That doesn't look like a UPI QR code. Try again or enter details manually.";
+          $("scanError").textContent = "That doesn't look like a supported UPI/payment QR code. Try again or enter details manually.";
           return;
         }
-        handleMerchantResolved(parsed.vpa, parsed.name);
+        handleMerchantResolved(parsed);
         stopScanner();
       },
       function onScanFailure() { /* fires continuously while no code is found — ignore */ }
@@ -871,6 +988,39 @@
     else startScanner();
   });
 
+  /* ---------- QR image upload (no camera needed) ---------- */
+  $("uploadQrBtn").addEventListener("click", function () { $("qrFileInput").click(); });
+
+  $("qrFileInput").addEventListener("change", function (e) {
+    var file = e.target.files && e.target.files[0];
+    e.target.value = ""; // allow re-selecting the same file later
+    if (!file) return;
+    $("scanError").textContent = "";
+    if (typeof Html5Qrcode === "undefined") {
+      $("scanError").textContent = "QR library failed to load. Check your connection and try again, or enter details manually.";
+      return;
+    }
+    if (state.scanning) stopScanner();
+    $("uploadQrBtn").disabled = true;
+    var originalLabel = $("uploadQrBtn").textContent;
+    $("uploadQrBtn").textContent = "Reading image…";
+    var fileScanner = new Html5Qrcode("qrFileRegion", { verbose: false });
+    fileScanner.scanFile(file, false).then(function (decodedText) {
+      var parsed = parsePaymentQr(decodedText);
+      if (!parsed) {
+        $("scanError").textContent = "Couldn't find a supported UPI/payment QR code in that image.";
+      } else {
+        handleMerchantResolved(parsed);
+      }
+    }).catch(function () {
+      $("scanError").textContent = "Couldn't read a QR code from that image. Try a clearer photo, or enter details manually.";
+    }).finally(function () {
+      $("uploadQrBtn").disabled = false;
+      $("uploadQrBtn").textContent = originalLabel;
+      fileScanner.clear().catch(function () {});
+    });
+  });
+
   /* ---------- Manual entry ---------- */
   $("useManualBtn").addEventListener("click", function () {
     var vpa = $("manualVpa").value.trim();
@@ -880,16 +1030,29 @@
       return;
     }
     $("scanError").textContent = "";
-    handleMerchantResolved(vpa, name);
+    handleMerchantResolved({ vpa: vpa, name: name, amount: null, currency: null, crcValid: null, format: "manual" });
   });
 
-  function handleMerchantResolved(vpa, name) {
-    state.vpa = vpa;
-    state.name = name || vpa.split("@")[0];
+  function handleMerchantResolved(result) {
+    state.vpa = result.vpa;
+    state.name = result.name || result.vpa.split("@")[0];
     $("merchantNameDisplay").textContent = state.name;
     $("merchantVpaDisplay").textContent = state.vpa;
     $("merchantInitial").textContent = state.name.charAt(0).toUpperCase();
     showScreen("amount");
+
+    // If the QR itself encoded a fixed (dynamic-QR) amount, prefill it —
+    // the user can still change it before splitting.
+    if (result.amount) {
+      $("billAmount").value = String(result.amount);
+      validateAmountScreen();
+    }
+    if (result.currency && result.currency !== "INR") {
+      showToast("QR currency is " + result.currency + " — this app splits amounts as INR");
+    }
+    if (result.crcValid === false) {
+      showToast("QR checksum didn't match — double-check the details before paying");
+    }
     setTimeout(function () { $("billAmount").focus(); }, 250);
   }
 
