@@ -249,6 +249,44 @@
     font-weight: 700; font-size: 0.82rem; cursor: pointer; white-space: nowrap;
   }
 
+  /* Choose destination screen */
+  .option-card {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: 18px;
+    padding: 18px;
+    margin-bottom: 14px;
+    cursor: pointer;
+    text-align: left;
+    width: 100%;
+    font-family: inherit;
+    color: var(--ink);
+  }
+  .option-card.primary {
+    border-color: var(--accent);
+    background: color-mix(in srgb, var(--accent) 10%, var(--surface));
+  }
+  .option-card .opt-icon {
+    width: 46px; height: 46px;
+    border-radius: 50%;
+    background: var(--accent);
+    color: var(--accent-ink);
+    display: flex; align-items: center; justify-content: center;
+    flex-shrink: 0;
+  }
+  .option-card.secondary .opt-icon {
+    background: var(--bg);
+    color: var(--muted);
+    border: 1px solid var(--line);
+  }
+  .option-card .opt-text { flex: 1; min-width: 0; }
+  .option-card .opt-title { font-weight: 800; font-size: 1rem; }
+  .option-card .opt-sub { font-size: 0.8rem; color: var(--muted); margin-top: 2px; word-break: break-all; }
+  .option-card .opt-chevron { color: var(--muted); flex-shrink: 0; }
+
   /* Amount screen */
   .amount-input-wrap {
     display: flex;
@@ -514,7 +552,7 @@
   </div>
 
   <nav class="stepper" aria-label="Progress">
-    <div class="step active" data-step="scan"><div class="rail"></div><div class="dot"></div><label>Scan</label></div>
+    <div class="step active" data-step="scan"><div class="rail"></div><div class="dot"></div><label>Start</label></div>
     <div class="step" data-step="amount"><div class="rail"></div><div class="dot"></div><label>Amount</label></div>
     <div class="step" data-step="split"><div class="rail"></div><div class="dot"></div><label>Split</label></div>
     <div class="step" data-step="pay"><div class="rail"></div><div class="dot"></div><label>Pay</label></div>
@@ -523,8 +561,38 @@
 
   <main>
 
+    <!-- SCREEN 0: CHOOSE DESTINATION -->
+    <section class="screen active" id="screen-choose">
+      <h1 class="title">Who are you paying?</h1>
+      <p class="sub">Pick your saved shop, or scan a different merchant's QR for a one-off split.</p>
+
+      <button class="option-card primary" id="payMyShopBtn">
+        <div class="opt-icon" id="shopInitial">S</div>
+        <div class="opt-text">
+          <div class="opt-title" id="shopOptTitle">Pay My Shop</div>
+          <div class="opt-sub" id="shopOptSub">—</div>
+        </div>
+        <svg class="opt-chevron" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"></polyline></svg>
+      </button>
+
+      <button class="option-card secondary" id="scanAnotherBtn">
+        <div class="opt-icon">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M4 7V5a1 1 0 011-1h2M20 7V5a1 1 0 00-1-1h-2M4 17v2a1 1 0 001 1h2M20 17v2a1 1 0 01-1 1h-2"/><rect x="7" y="7" width="4" height="4" rx="0.5"/><rect x="13" y="7" width="4" height="4" rx="0.5"/><rect x="7" y="13" width="4" height="4" rx="0.5"/></svg>
+        </div>
+        <div class="opt-text">
+          <div class="opt-title">Scan Another QR</div>
+          <div class="opt-sub">Camera, image upload, or type a UPI ID</div>
+        </div>
+        <svg class="opt-chevron" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"></polyline></svg>
+      </button>
+
+      <div class="btn-row">
+        <button class="text-btn" id="chooseHistoryBtn">View history</button>
+      </div>
+    </section>
+
     <!-- SCREEN 1: SCAN -->
-    <section class="screen active" id="screen-scan">
+    <section class="screen" id="screen-scan">
       <h1 class="title">Scan the merchant's QR</h1>
       <p class="sub">Works with UPI deep-link QRs and BharatQR/EMVCo-style bank &amp; merchant QRs. Nothing you scan ever leaves this device.</p>
 
@@ -556,6 +624,7 @@
         <input type="text" id="manualName" placeholder="e.g. Sharma General Store" autocomplete="off">
       </div>
       <button class="secondary-btn" id="useManualBtn">Use this UPI ID</button>
+      <button class="text-btn" id="backToChooseBtn">Back</button>
     </section>
 
     <!-- SCREEN 2: AMOUNT -->
@@ -581,9 +650,9 @@
       <div class="limit-row">
         <div class="limit-row-text">
           <strong>Per-payment limit</strong>
-          <span>Each split will be ₹<span id="limitLabel">2,000</span> or less</span>
+          <span>Each split will be ₹<span id="limitLabel">1,999</span> or less</span>
         </div>
-        <input type="text" inputmode="numeric" class="limit-edit-input" id="limitInput" value="2000">
+        <input type="text" inputmode="numeric" class="limit-edit-input" id="limitInput" value="1999">
       </div>
 
       <p class="preview-line" id="previewLine">&nbsp;</p>
@@ -655,9 +724,17 @@
   "use strict";
 
   /* ---------- Constants & state ---------- */
-  var DEFAULT_LIMIT = 2000;
+  var DEFAULT_LIMIT = 1999;
+  var MAX_LIMIT = 1999; // hard cap — the app must never generate a payment above this
   var STORAGE_KEY = "splitr_history_v1";
   var THEME_KEY = "splitr_theme";
+
+  // Fixed shop destination. The VPA below is copied verbatim from decoding
+  // the shop's own QR image (upi://pay?pa=paytmqr5hni11@ptys&pn=Paytm&tn=...) —
+  // it is never guessed. The display name uses the shop's signage ("Poonam
+  // Electronics") since the QR's own pn= field is just the generic "Paytm".
+  var SHOP_VPA = "paytmqr5hni11@ptys";
+  var SHOP_NAME = "Poonam Electronics";
 
   var state = {
     vpa: "",
@@ -875,7 +952,7 @@
   }
 
   /* ---------- Screen / step navigation ---------- */
-  var screenOrder = ["scan", "amount", "pay", "done"];
+  var screenOrder = ["choose", "scan", "amount", "pay", "done"];
   function showScreen(name) {
     document.querySelectorAll(".screen").forEach(function (s) { s.classList.remove("active"); });
     $("screen-" + name).classList.add("active");
@@ -884,7 +961,7 @@
   }
 
   function updateStepper(activeName) {
-    var mapping = { scan: "scan", amount: "amount", pay: "split", done: "done", history: null };
+    var mapping = { choose: "scan", scan: "scan", amount: "amount", pay: "split", done: "done", history: null };
     var current = mapping[activeName];
     var order = ["scan", "amount", "split", "pay", "done"];
     // "pay" screen covers both split-preview and payment; treat pay-in-progress as 'pay' after first mark
@@ -1021,6 +1098,21 @@
     });
   });
 
+  /* ---------- Choose destination screen ---------- */
+  function initShopOption() {
+    $("shopOptTitle").textContent = "Pay " + SHOP_NAME;
+    $("shopOptSub").textContent = SHOP_VPA;
+    $("shopInitial").textContent = SHOP_NAME.charAt(0).toUpperCase();
+  }
+
+  $("payMyShopBtn").addEventListener("click", function () {
+    handleMerchantResolved({ vpa: SHOP_VPA, name: SHOP_NAME, amount: null, currency: null, crcValid: null, format: "fixed-shop" });
+  });
+
+  $("scanAnotherBtn").addEventListener("click", function () { showScreen("scan"); });
+  $("backToChooseBtn").addEventListener("click", function () { showScreen("choose"); });
+  $("chooseHistoryBtn").addEventListener("click", function () { renderHistory(); showScreen("history"); });
+
   /* ---------- Manual entry ---------- */
   $("useManualBtn").addEventListener("click", function () {
     var vpa = $("manualVpa").value.trim();
@@ -1056,8 +1148,8 @@
     setTimeout(function () { $("billAmount").focus(); }, 250);
   }
 
-  $("changeMerchantBtn").addEventListener("click", function () { showScreen("scan"); });
-  $("backToScanBtn").addEventListener("click", function () { showScreen("scan"); });
+  $("changeMerchantBtn").addEventListener("click", function () { showScreen("choose"); });
+  $("backToScanBtn").addEventListener("click", function () { showScreen("choose"); });
 
   /* ---------- Amount screen ---------- */
   function sanitizeDecimalInput(el) {
@@ -1096,6 +1188,10 @@
       errEl.textContent = "Per-payment limit must be greater than ₹0";
       return;
     }
+    if (limit > MAX_LIMIT) {
+      errEl.textContent = "Per-payment limit can't exceed " + formatINR(MAX_LIMIT);
+      return;
+    }
     try {
       var parts = splitBill(amount, limit);
       var n = parts.length;
@@ -1111,6 +1207,10 @@
   $("toSplitBtn").addEventListener("click", function () {
     var amount = parseFloat($("billAmount").value);
     var limit = parseInt($("limitInput").value, 10);
+    if (limit > MAX_LIMIT) {
+      $("amountError").textContent = "Per-payment limit can't exceed " + formatINR(MAX_LIMIT);
+      return;
+    }
     try {
       var parts = splitBill(amount, limit);
       state.billAmount = amount;
@@ -1229,13 +1329,13 @@
   $("cancelSessionBtn").addEventListener("click", function () {
     if (confirm("Discard this split? Nothing has been saved yet.")) {
       resetSession();
-      showScreen("scan");
+      showScreen("choose");
     }
   });
 
   $("newSplitBtn").addEventListener("click", function () {
     resetSession();
-    showScreen("scan");
+    showScreen("choose");
   });
 
   function resetSession() {
@@ -1298,7 +1398,7 @@
     renderHistory();
     showScreen("history");
   });
-  $("closeHistoryBtn").addEventListener("click", function () { showScreen("scan"); });
+  $("closeHistoryBtn").addEventListener("click", function () { showScreen("choose"); });
   $("clearHistoryBtn").addEventListener("click", function () {
     if (confirm("Clear all local history? This can't be undone.")) {
       localStorage.removeItem(STORAGE_KEY);
@@ -1309,7 +1409,8 @@
 
   /* ---------- Init ---------- */
   initTheme();
-  showScreen("scan");
+  initShopOption();
+  showScreen("choose");
 
   if ("serviceWorker" in navigator) {
     window.addEventListener("load", function () {
