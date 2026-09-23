@@ -1096,14 +1096,18 @@
     });
   }
 
-  // Does a candidate VPA (possibly partially masked) identify the shop's
-  // real VPA? The domain (psp) always has to match exactly; the handle can
-  // match exactly OR, when part of it is masked, by its visible tail lining
-  // up with the tail of the real handle — this is what lets a receipt that
-  // only shows the end of the ID (e.g. "...nuzg@paytm") still count.
-  function vpaMatchesShop(candidate) {
+  // Does a candidate VPA (possibly partially masked) identify the VPA this
+  // split was actually paid to? That's state.vpa — whatever QR was scanned
+  // or entered for this session (the fixed shop, or any other merchant the
+  // user chose via "Scan another QR"), not always the fixed shop. The
+  // domain (psp) always has to match exactly; the handle can match exactly
+  // OR, when part of it is masked, by its visible tail lining up with the
+  // tail of the real handle — this is what lets a receipt that only shows
+  // the end of the ID (e.g. "...nuzg@paytm") still count.
+  function vpaMatchesRecipient(candidate) {
     var candNorm = candidate.toLowerCase();
-    var shopNorm = SHOP_VPA.toLowerCase();
+    var shopNorm = (state.vpa || "").toLowerCase();
+    if (!shopNorm) return false;
     if (candNorm === shopNorm) return true;
 
     var candParts = candNorm.split("@");
@@ -1173,21 +1177,21 @@
   // identifiable is found by any of these routes, this does NOT verify.
   function checkRecipient(text, qrParsed) {
     if (qrParsed && qrParsed.vpa) {
-      return { ok: vpaMatchesShop(qrParsed.vpa), found: qrParsed.vpa, fromQr: true };
+      return { ok: vpaMatchesRecipient(qrParsed.vpa), found: qrParsed.vpa, fromQr: true };
     }
 
     var candidates = extractVpaCandidates(text);
     if (candidates.length) {
       var match = null;
       for (var i = 0; i < candidates.length; i++) {
-        if (vpaMatchesShop(candidates[i])) { match = candidates[i]; break; }
+        if (vpaMatchesRecipient(candidates[i])) { match = candidates[i]; break; }
       }
       return match ? { ok: true, found: match } : { ok: false, found: candidates[0] };
     }
 
     var name = extractPayeeName(text);
     if (name) {
-      var a = normalizeForCompare(name), b = normalizeForCompare(SHOP_NAME);
+      var a = normalizeForCompare(name), b = normalizeForCompare(state.name || "");
       var nameOk = a.length >= 3 && b.length >= 3 && (a.indexOf(b) !== -1 || b.indexOf(a) !== -1);
       return { ok: nameOk, found: name };
     }
@@ -1254,14 +1258,15 @@
   function renderVerifyResult(allOk, checks, lastAmount) {
     $("verifyLoading").hidden = true;
     $("verifyResult").hidden = false;
+    var recipientName = state.name || "the recipient";
     var recipientLabel;
     var recipientSource = checks.recipientFromQr ? " (from QR code)" : "";
     if (!checks.recipientFound) {
       recipientLabel = "No recipient name or UPI ID found on receipt";
     } else if (checks.recipientOk) {
-      recipientLabel = "Recipient matches " + SHOP_NAME + " (" + checks.recipientFound + ")" + recipientSource;
+      recipientLabel = "Recipient matches " + recipientName + " (" + checks.recipientFound + ")" + recipientSource;
     } else {
-      recipientLabel = "Recipient on receipt (" + checks.recipientFound + ") doesn't match " + SHOP_NAME + recipientSource;
+      recipientLabel = "Recipient on receipt (" + checks.recipientFound + ") doesn't match " + recipientName + recipientSource;
     }
     var rows = [
       [checks.amountOk, "Amount matches " + formatINR(lastAmount)],
