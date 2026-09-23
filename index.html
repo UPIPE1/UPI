@@ -675,6 +675,7 @@
       <button class="secondary-btn" id="uploadQrBtn" style="margin-top:10px;">Upload QR image</button>
       <input type="file" id="qrFileInput" accept="image/*" style="display:none;">
       <div id="qrFileRegion" style="display:none;"></div>
+      <div id="verifyQrRegion" style="display:none;"></div>
 
       <div class="divider-row">or enter manually</div>
 
@@ -1085,7 +1086,10 @@
   // payee's ID (e.g. "•••••nuzg@paytm", "xxxxx1234@ybl"), so the handle part
   // also allows *, x/X, • and dots as mask characters.
   function extractVpaCandidates(text) {
-    var matches = text.match(/[a-zA-Z0-9*xX•.\-_]{2,64}@[a-zA-Z]{2,64}\b/g) || [];
+    // Tesseract sometimes inserts stray spaces around punctuation like "@" —
+    // close those up before matching so "name @ psp" is still recognized.
+    var compact = text.replace(/\s*@\s*/g, "@");
+    var matches = compact.match(/[a-zA-Z0-9*xX•.\-_]{2,64}@[a-zA-Z]{2,64}\b/g) || [];
     var emailDomains = ["gmail", "yahoo", "hotmail", "outlook", "icloud", "rediffmail", "protonmail", "live", "aol"];
     return matches.filter(function (m) {
       return emailDomains.indexOf(m.split("@")[1].toLowerCase()) === -1;
@@ -1122,25 +1126,56 @@
   // freeform name can be a locally-saved contact nickname rather than who
   // the ID is actually registered to, so it's a weaker signal than the ID.
   function extractPayeeName(text) {
+    // Try clearly-labeled lines first ("Payee Name: X", "Merchant: X"), then
+    // fall back to how success screens usually phrase it inline — "₹1,501
+    // paid to Poonam Electronics" or "You paid ... to Poonam Electronics" —
+    // which a label doesn't sit at the very start of the line for.
     var lines = text.split(/\r?\n/).map(function (l) { return l.trim(); }).filter(Boolean);
-    var keywordRe = /^(paid\s*to|pay(ing)?\s*to|to|payee|receiver(?:'?s)?(?:\s*name)?|merchant(?:\s*name)?|beneficiary)\s*[:\-]?\s*(.*)$/i;
+    var labelRe = /^(payee|receiver)(?:'?s)?\s*name\s*[:\-]?\s*(.*)$/i;
     for (var i = 0; i < lines.length; i++) {
-      var m = lines[i].match(keywordRe);
+      var m = lines[i].match(labelRe);
       if (!m) continue;
-      var candidate = (m[3] || "").trim();
-      if (!candidate && lines[i + 1]) candidate = lines[i + 1];
-      candidate = candidate.replace(/[^a-zA-Z0-9 &.'-]/g, "").trim();
-      if (candidate.length >= 2 && !/^\d+$/.test(candidate)) return candidate;
+      var candidate = (m[2] || "").trim() || lines[i + 1] || "";
+      candidate = clean(candidate);
+      if (candidate) return candidate;
+    }
+
+    var inlinePatterns = [
+      /paid\s+(?:successfully\s+)?to\s*[:\-]?\s*([A-Za-z][A-Za-z0-9&.' \-]{1,60})/i,
+      /(?:sent|transferred)\s+to\s*[:\-]?\s*([A-Za-z][A-Za-z0-9&.' \-]{1,60})/i,
+      /merchant(?:\s*name)?\s*[:\-]?\s*([A-Za-z][A-Za-z0-9&.' \-]{1,60})/i,
+      /beneficiary(?:\s*name)?\s*[:\-]?\s*([A-Za-z][A-Za-z0-9&.' \-]{1,60})/i,
+      /\bto\s+([A-Z][A-Za-z0-9&.' \-]{1,60})/
+    ];
+    var flat = text.replace(/[ \t]+/g, " ");
+    for (var j = 0; j < inlinePatterns.length; j++) {
+      var im = flat.match(inlinePatterns[j]);
+      if (!im) continue;
+      var candidate2 = clean(im[1].split(/\r?\n/)[0]);
+      if (candidate2) return candidate2;
     }
     return null;
+
+    function clean(s) {
+      var c = s.replace(/\s+(on|via|using|at|rs\.?|inr|₹)\b.*/i, "");
+      c = c.replace(/[^a-zA-Z0-9 &.'-]/g, "").trim();
+      return (c.length >= 2 && !/^\d+$/.test(c)) ? c : null;
+    }
   }
 
-  // Who did this receipt actually pay? The UPI ID is authoritative — it
-  // can't be a saved nickname or a mismatched registered name the way
-  // freeform text can, and it's checked even when only partially visible.
-  // A freeform name is only consulted when no ID at all is visible, and if
-  // nothing identifiable is found either way, this does NOT verify.
-  function checkRecipient(text) {
+  // Who did this receipt actually pay? A VPA decoded straight from a QR
+  // code inside the receipt image is the strongest possible signal (exact,
+  // not OCR-guessed) and is checked first. After that, the UPI ID found in
+  // the receipt's OCR text is authoritative — it can't be a saved nickname
+  // or a mismatched registered name the way freeform text can, and it's
+  // checked even when only partially visible. A freeform name is only
+  // consulted when no ID at all is visible anywhere, and if nothing
+  // identifiable is found by any of these routes, this does NOT verify.
+  function checkRecipient(text, qrParsed) {
+    if (qrParsed && qrParsed.vpa) {
+      return { ok: vpaMatchesShop(qrParsed.vpa), found: qrParsed.vpa, fromQr: true };
+    }
+
     var candidates = extractVpaCandidates(text);
     if (candidates.length) {
       var match = null;
@@ -1160,19 +1195,23 @@
     return { ok: false, found: null };
   }
 
-  function checkReceiptText(rawText, expectedAmount) {
+  function checkReceiptText(rawText, expectedAmount, qrParsed) {
     var text = rawText || "";
     var lower = text.toLowerCase();
 
     var amountOk = amountTextVariants(expectedAmount).some(function (v) {
       return text.indexOf(v) !== -1;
     });
+    if (!amountOk && qrParsed && qrParsed.amount) {
+      amountOk = amountTextVariants(expectedAmount).indexOf(amountTextVariants(qrParsed.amount)[0]) !== -1 ||
+        Math.abs(qrParsed.amount - expectedAmount) < 0.005;
+    }
 
     var failWords = /(fail(ed)?|declined|cancel(l)?ed|pending|unsuccessful|insufficient)/i;
     var successWords = /(success(ful)?|completed|complete|paid|done)/i;
     var statusOk = successWords.test(lower) && !failWords.test(lower);
 
-    var recipient = checkRecipient(text);
+    var recipient = checkRecipient(text, qrParsed);
 
     var refOk =
       /(utr|ref(erence)?\s*no\.?|txn\s*id|transaction\s*id|order\s*id)/i.test(text) ||
@@ -1183,6 +1222,7 @@
       statusOk: statusOk,
       recipientOk: recipient.ok,
       recipientFound: recipient.found,
+      recipientFromQr: !!recipient.fromQr,
       refOk: refOk
     };
   }
@@ -1215,12 +1255,13 @@
     $("verifyLoading").hidden = true;
     $("verifyResult").hidden = false;
     var recipientLabel;
+    var recipientSource = checks.recipientFromQr ? " (from QR code)" : "";
     if (!checks.recipientFound) {
       recipientLabel = "No recipient name or UPI ID found on receipt";
     } else if (checks.recipientOk) {
-      recipientLabel = "Recipient matches " + SHOP_NAME + " (" + checks.recipientFound + ")";
+      recipientLabel = "Recipient matches " + SHOP_NAME + " (" + checks.recipientFound + ")" + recipientSource;
     } else {
-      recipientLabel = "Recipient on receipt (" + checks.recipientFound + ") doesn't match " + SHOP_NAME;
+      recipientLabel = "Recipient on receipt (" + checks.recipientFound + ") doesn't match " + SHOP_NAME + recipientSource;
     }
     var rows = [
       [checks.amountOk, "Amount matches " + formatINR(lastAmount)],
@@ -1257,15 +1298,36 @@
     }
   }
 
+  // If the receipt image happens to contain a scannable UPI QR code, decode
+  // it directly (exact — no OCR guessing involved) using the same QR
+  // reader already used for the shop's own QR. Resolves to null rather
+  // than rejecting when there's no QR to find, so it never blocks OCR.
+  function tryDecodeReceiptQr(file) {
+    if (typeof Html5Qrcode === "undefined") return Promise.resolve(null);
+    var qrScanner = new Html5Qrcode("verifyQrRegion", { verbose: false });
+    return qrScanner
+      .scanFile(file, false)
+      .then(function (decodedText) { return parsePaymentQr(decodedText); })
+      .catch(function () { return null; })
+      .then(function (parsed) {
+        qrScanner.clear().catch(function () {});
+        return parsed;
+      });
+  }
+
   function runReceiptVerification(file) {
     $("verifyUpload").hidden = true;
     $("verifyLoading").hidden = false;
     var last = state.splits[state.splits.length - 1];
-    loadTesseract()
-      .then(function () { return Tesseract.recognize(file, "eng"); })
-      .then(function (result) {
-        var text = (result && result.data && result.data.text) || "";
-        var checks = checkReceiptText(text, last.amount);
+    Promise.all([
+      tryDecodeReceiptQr(file),
+      loadTesseract().then(function () { return Tesseract.recognize(file, "eng"); })
+    ])
+      .then(function (results) {
+        var qrParsed = results[0];
+        var ocrResult = results[1];
+        var text = (ocrResult && ocrResult.data && ocrResult.data.text) || "";
+        var checks = checkReceiptText(text, last.amount, qrParsed);
         var allOk = checks.amountOk && checks.statusOk && checks.recipientOk && checks.refOk;
         state.verification = { verified: allOk, checks: checks, skipped: false };
         renderVerifyResult(allOk, checks, last.amount);
