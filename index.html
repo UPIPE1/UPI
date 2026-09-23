@@ -1298,6 +1298,17 @@
     }
   }
 
+  // Html5Qrcode.clear() doesn't reliably return a real Promise — it depends
+  // on the scanner's internal state at the time (e.g. after scanFile()
+  // fails to find a code), so chaining .catch() straight onto it can throw
+  // "Cannot read properties of undefined (reading 'catch')". Promise.resolve()
+  // normalizes either case safely.
+  function safeClearScanner(scanner) {
+    try {
+      Promise.resolve(scanner && scanner.clear()).catch(function () {});
+    } catch (e) { /* ignore */ }
+  }
+
   // If the receipt image happens to contain a scannable UPI QR code, decode
   // it directly (exact — no OCR guessing involved) using the same QR
   // reader already used for the shop's own QR. Resolves to null rather
@@ -1310,7 +1321,7 @@
       .then(function (decodedText) { return parsePaymentQr(decodedText); })
       .catch(function () { return null; })
       .then(function (parsed) {
-        qrScanner.clear().catch(function () {});
+        safeClearScanner(qrScanner);
         return parsed;
       });
   }
@@ -1543,7 +1554,7 @@
     }).finally(function () {
       $("uploadQrBtn").disabled = false;
       $("uploadQrBtn").textContent = originalLabel;
-      fileScanner.clear().catch(function () {});
+      safeClearScanner(fileScanner);
     });
   });
 
