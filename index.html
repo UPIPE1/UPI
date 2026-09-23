@@ -1078,22 +1078,49 @@
     return (s || "").toLowerCase().replace(/[^a-z0-9]/g, "");
   }
 
-  // Pull an actual UPI VPA (handle@psp) out of the receipt text, if one is
-  // printed on it. UPI handles don't carry a dot after the @ (e.g. @paytm,
-  // @okicici, @ybl) — that's what tells them apart from an email address
-  // (@gmail.com) that might also appear on a receipt.
-  function extractVpa(text) {
-    var matches = text.match(/[a-zA-Z0-9.\-_]{2,64}@[a-zA-Z]{2,64}\b/g) || [];
+  // Pull every UPI-VPA-shaped token (handle@psp) out of the receipt text.
+  // UPI handles don't carry a dot after the @ (e.g. @paytm, @okicici, @ybl)
+  // — that's what tells them apart from an email address (@gmail.com) that
+  // might also appear on a receipt. Some apps partially mask a saved/recent
+  // payee's ID (e.g. "•••••nuzg@paytm", "xxxxx1234@ybl"), so the handle part
+  // also allows *, x/X, • and dots as mask characters.
+  function extractVpaCandidates(text) {
+    var matches = text.match(/[a-zA-Z0-9*xX•.\-_]{2,64}@[a-zA-Z]{2,64}\b/g) || [];
     var emailDomains = ["gmail", "yahoo", "hotmail", "outlook", "icloud", "rediffmail", "protonmail", "live", "aol"];
-    var real = matches.filter(function (m) {
+    return matches.filter(function (m) {
       return emailDomains.indexOf(m.split("@")[1].toLowerCase()) === -1;
     });
-    return real[0] || null;
+  }
+
+  // Does a candidate VPA (possibly partially masked) identify the shop's
+  // real VPA? The domain (psp) always has to match exactly; the handle can
+  // match exactly OR, when part of it is masked, by its visible tail lining
+  // up with the tail of the real handle — this is what lets a receipt that
+  // only shows the end of the ID (e.g. "...nuzg@paytm") still count.
+  function vpaMatchesShop(candidate) {
+    var candNorm = candidate.toLowerCase();
+    var shopNorm = SHOP_VPA.toLowerCase();
+    if (candNorm === shopNorm) return true;
+
+    var candParts = candNorm.split("@");
+    var shopParts = shopNorm.split("@");
+    if (candParts[1] !== shopParts[1]) return false; // psp/domain must match exactly
+
+    var candHandle = candParts[0];
+    var shopHandle = shopParts[0];
+    if (candHandle === shopHandle) return true;
+
+    var visibleTail = candHandle.replace(/[*xX•.\-_]/g, "");
+    if (visibleTail.length < 4) return false; // too little visible to trust
+    return shopHandle.slice(-visibleTail.length) === visibleTail;
   }
 
   // Pull a payee/merchant name out of the receipt text by looking for the
   // common receipt labels apps use ("Paid to", "To", "Payee", "Receiver",
   // "Merchant Name", "Beneficiary"), on the same line or the line after.
+  // This is ONLY used when no UPI ID at all is visible on the receipt — a
+  // freeform name can be a locally-saved contact nickname rather than who
+  // the ID is actually registered to, so it's a weaker signal than the ID.
   function extractPayeeName(text) {
     var lines = text.split(/\r?\n/).map(function (l) { return l.trim(); }).filter(Boolean);
     var keywordRe = /^(paid\s*to|pay(ing)?\s*to|to|payee|receiver(?:'?s)?(?:\s*name)?|merchant(?:\s*name)?|beneficiary)\s*[:\-]?\s*(.*)$/i;
@@ -1108,19 +1135,19 @@
     return null;
   }
 
-  // Who did this receipt actually pay? Prefer a VPA if one is visible on the
-  // receipt (strongest signal); fall back to a payee name; if neither can be
-  // found at all, this does NOT verify — it never assumes a match.
+  // Who did this receipt actually pay? The UPI ID is authoritative — it
+  // can't be a saved nickname or a mismatched registered name the way
+  // freeform text can, and it's checked even when only partially visible.
+  // A freeform name is only consulted when no ID at all is visible, and if
+  // nothing identifiable is found either way, this does NOT verify.
   function checkRecipient(text) {
-    var lower = text.toLowerCase();
-    var shopVpaNorm = SHOP_VPA.toLowerCase();
-    var shopHandleNorm = SHOP_VPA.split("@")[0].toLowerCase();
-
-    var vpa = extractVpa(text);
-    if (vpa) {
-      var vpaNorm = vpa.toLowerCase();
-      var vpaOk = vpaNorm === shopVpaNorm || vpaNorm.indexOf(shopHandleNorm) !== -1;
-      return { ok: vpaOk, found: vpa };
+    var candidates = extractVpaCandidates(text);
+    if (candidates.length) {
+      var match = null;
+      for (var i = 0; i < candidates.length; i++) {
+        if (vpaMatchesShop(candidates[i])) { match = candidates[i]; break; }
+      }
+      return match ? { ok: true, found: match } : { ok: false, found: candidates[0] };
     }
 
     var name = extractPayeeName(text);
@@ -1128,15 +1155,6 @@
       var a = normalizeForCompare(name), b = normalizeForCompare(SHOP_NAME);
       var nameOk = a.length >= 3 && b.length >= 3 && (a.indexOf(b) !== -1 || b.indexOf(a) !== -1);
       return { ok: nameOk, found: name };
-    }
-
-    // Last resort: the exact VPA or shop name appears verbatim somewhere in
-    // the text even without a recognizable label next to it.
-    if (lower.indexOf(shopVpaNorm) !== -1 || lower.indexOf(shopHandleNorm) !== -1) {
-      return { ok: true, found: SHOP_VPA };
-    }
-    if (lower.indexOf(SHOP_NAME.toLowerCase()) !== -1) {
-      return { ok: true, found: SHOP_NAME };
     }
 
     return { ok: false, found: null };
