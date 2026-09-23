@@ -1,6 +1,6 @@
 // Splitr service worker — caches the app shell only.
 // No user data, bill amounts, or UPI details ever pass through here.
-const CACHE_NAME = "splitr-shell-v2.1";
+const CACHE_NAME = "splitr-shell-v2.3";
 const SHELL_FILES = [
   "./",
   "./index.html",
