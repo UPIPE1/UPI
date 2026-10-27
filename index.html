@@ -817,14 +817,10 @@
 
   /* ---------- Constants & state ---------- */
   var DEFAULT_LIMIT = 1999;
-  var MAX_LIMIT = 1999; // hard cap — the app must never generate a payment above this
+  var MAX_LIMIT = 1999;
   var STORAGE_KEY = "splitr_history_v1";
   var THEME_KEY = "splitr_theme";
 
-  // Fixed shop destination. The VPA below is copied verbatim from decoding
-  // the shop's own QR image (upi://pay?pa=paytmqrpmc3i3nuzg@paytm&pn=Paytm) —
-  // it is never guessed. The display name uses the shop's signage ("Poonam
-  // Electronics") since the QR's own pn= field is just the generic "Paytm".
   var SHOP_VPA = "paytmqrpmc3i3nuzg@paytm";
   var SHOP_NAME = "Poonam Electronics";
 
@@ -833,17 +829,16 @@
     name: "",
     billAmount: 0,
     limit: DEFAULT_LIMIT,
-    splits: [], // { amount, status: 'pending'|'paid'|'failed' }
+    splits: [],
     qrScanner: null,
     scanning: false,
-    verification: null // { verified: bool, checks: {...} } | { skipped: true } | null
+    verification: null
   };
 
   /* ---------- Utilities ---------- */
   function $(id) { return document.getElementById(id); }
 
   function formatINR(amount) {
-    // Indian digit grouping, up to 2 decimals, trims trailing .00
     var isNeg = amount < 0;
     amount = Math.abs(amount);
     var fixed = amount.toFixed(2);
@@ -872,12 +867,7 @@
     showToast._timer = setTimeout(function () { t.classList.remove("show"); }, 2200);
   }
 
-  /* ---------- Core split algorithm ----------
-     Guarantees:
-       sum(all split amounts) == bill amount
-       every split amount <= configured limit
-     Strategy: greedy fixed-size chunks at the limit, remainder last.
-  */
+  /* ---------- Core split algorithm ---------- */
   function splitBill(totalRupees, limitRupees) {
     var totalPaise = toPaise(totalRupees);
     var limitPaise = toPaise(limitRupees);
@@ -892,7 +882,6 @@
     }
     if (remaining > 0) parts.push(remaining);
 
-    // Safety-check invariants before returning
     var sum = parts.reduce(function (a, b) { return a + b; }, 0);
     if (sum !== totalPaise) throw new Error("Internal split error: totals do not match");
     for (var i = 0; i < parts.length; i++) {
@@ -901,25 +890,8 @@
     return parts.map(toRupees);
   }
 
-  /* ---------- Payment QR parsing ----------
-     Supports two families of QR content, and never invents a UPI ID that
-     isn't actually present in the scanned data:
-
-     1. UPI deep-link URIs, e.g.  upi://pay?pa=merchant@bank&pn=Name&am=..&cu=INR
-        (also covers the handful of bank apps that use a different scheme
-        but the same pa=/pn=/am=/cu= query parameters)
-
-     2. EMVCo "Merchant Presented Mode" QR — the TLV-based format behind
-        BharatQR and most bank/PoS-issued static or dynamic UPI QR stickers,
-        which always starts with the Payload Format Indicator "000201...".
-        The UPI VPA lives inside one of the nested "Merchant Account
-        Information" templates (tags 02–51); which exact tag a given bank
-        uses varies, so we search all of them for a value that is — or
-        contains — a valid-looking VPA, rather than assuming one tag number.
-  */
-
+  /* ---------- Payment QR parsing ---------- */
   function parseUpiUriFormat(text) {
-    // Expect something like upi://pay?pa=...&pn=...&am=...&cu=...
     var m = text.match(/^[a-zA-Z0-9.+-]+:\/\/[^?]*\?(.*)$/);
     var query = m ? m[1] : (text.indexOf("pa=") !== -1 ? text : null);
     if (!query) return null;
@@ -931,7 +903,7 @@
       var v = decodeURIComponent(kv.slice(1).join("=").replace(/\+/g, " "));
       params[k] = v;
     });
-    if (!params.pa) return null; // no payee address present — don't guess one
+    if (!params.pa) return null;
     var amount = params.am ? parseFloat(params.am) : null;
     return {
       format: "UPI link",
@@ -945,8 +917,6 @@
 
   var VPA_PATTERN = /[a-zA-Z0-9.\-_]{2,256}@[a-zA-Z][a-zA-Z0-9]{1,64}/;
 
-  // Minimal TLV (tag-length-value) reader for EMVCo-style payloads:
-  // every field is a 2-digit tag, a 2-digit length, then that many chars of value.
   function parseTLV(data) {
     var result = {};
     var i = 0;
@@ -955,7 +925,7 @@
       var len = parseInt(data.substr(i + 2, 2), 10);
       if (!/^\d{2}$/.test(tag) || isNaN(len)) break;
       var value = data.substr(i + 4, len);
-      if (value.length !== len) break; // truncated or corrupt — stop rather than misread
+      if (value.length !== len) break;
       result[tag] = value;
       i += 4 + len;
     }
@@ -963,15 +933,11 @@
   }
 
   function findVpaInTemplate(rawValue) {
-    // A compliant "Merchant Account Information" template is itself TLV,
-    // typically with a GUID at subtag 00 and network-specific fields after it.
     var nested = parseTLV(rawValue);
     var keys = Object.keys(nested);
     for (var k = 0; k < keys.length; k++) {
       if (VPA_PATTERN.test(nested[keys[k]])) return nested[keys[k]].match(VPA_PATTERN)[0];
     }
-    // Fall back to scanning the raw template text directly, in case a bank's
-    // implementation doesn't nest it in valid TLV.
     var m = rawValue.match(VPA_PATTERN);
     return m ? m[0] : null;
   }
@@ -990,8 +956,6 @@
   function parseEmvQr(text) {
     var clean = text.trim();
     var root = parseTLV(clean);
-    // Tag 00 (Payload Format Indicator) is fixed to "01" for every EMVCo QR —
-    // this is what distinguishes the format from plain text or other schemes.
     if (root["00"] !== "01") return null;
 
     var vpa = null;
@@ -1002,13 +966,12 @@
         if (found) { vpa = found; break; }
       }
     }
-    if (!vpa) return null; // no UPI-style destination found anywhere — don't fabricate one
+    if (!vpa) return null;
 
     var amount = root["54"] ? parseFloat(root["54"]) : null;
     var currencyCode = root["53"] || null;
     var currency = currencyCode === "356" ? "INR" : (currencyCode ? ("ISO " + currencyCode) : null);
 
-    // Best-effort integrity check — never blocks parsing, just informs the user.
     var crcValid = null;
     if (root["63"] && root["63"].length === 4 && clean.slice(-8, -4) === "6304") {
       var dataForCrc = clean.slice(0, -4);
@@ -1044,14 +1007,7 @@
     return "upi://pay?" + params.join("&");
   }
 
-  /* ---------- Receipt verification (optional, fully client-side) ----------
-     Verifies ONLY the last split's payment, from a screenshot the user
-     chooses to upload. Everything happens in the browser via Tesseract.js
-     (loaded from a CDN, same pattern as the QR scanner) — the image is never
-     sent to any server. This never blocks the split; it is purely optional
-     and the user can skip it at any point. Results are called "Receipt
-     Verified", never a bank/payment-provider verification, since a static
-     page has no way to confirm anything with the bank itself. */
+  /* ---------- Receipt verification ---------- */
   var TESSERACT_CDN = "https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/tesseract.min.js";
   var tesseractLoadPromise = null;
   function loadTesseract() {
@@ -1061,7 +1017,7 @@
       var s = document.createElement("script");
       s.src = TESSERACT_CDN;
       s.onload = function () { resolve(); };
-      s.onerror = function () { tesseractLoadPromise = null; reject(new Error("couldn't load the receipt reader — check your connection")); };
+      s.onerror = function () { tesseractLoadPromise = null; reject(new Error("couldn't load receipt reader")); };
       document.head.appendChild(s);
     });
     return tesseractLoadPromise;
@@ -1079,15 +1035,7 @@
     return (s || "").toLowerCase().replace(/[^a-z0-9]/g, "");
   }
 
-  // Pull every UPI-VPA-shaped token (handle@psp) out of the receipt text.
-  // UPI handles don't carry a dot after the @ (e.g. @paytm, @okicici, @ybl)
-  // — that's what tells them apart from an email address (@gmail.com) that
-  // might also appear on a receipt. Some apps partially mask a saved/recent
-  // payee's ID (e.g. "•••••nuzg@paytm", "xxxxx1234@ybl"), so the handle part
-  // also allows *, x/X, • and dots as mask characters.
   function extractVpaCandidates(text) {
-    // Tesseract sometimes inserts stray spaces around punctuation like "@" —
-    // close those up before matching so "name @ psp" is still recognized.
     var compact = text.replace(/\s*@\s*/g, "@");
     var matches = compact.match(/[a-zA-Z0-9*xX•.\-_]{2,64}@[a-zA-Z]{2,64}\b/g) || [];
     var emailDomains = ["gmail", "yahoo", "hotmail", "outlook", "icloud", "rediffmail", "protonmail", "live", "aol"];
@@ -1096,14 +1044,6 @@
     });
   }
 
-  // Does a candidate VPA (possibly partially masked) identify the VPA this
-  // split was actually paid to? That's state.vpa — whatever QR was scanned
-  // or entered for this session (the fixed shop, or any other merchant the
-  // user chose via "Scan another QR"), not always the fixed shop. The
-  // domain (psp) always has to match exactly; the handle can match exactly
-  // OR, when part of it is masked, by its visible tail lining up with the
-  // tail of the real handle — this is what lets a receipt that only shows
-  // the end of the ID (e.g. "...nuzg@paytm") still count.
   function vpaMatchesRecipient(candidate) {
     var candNorm = candidate.toLowerCase();
     var shopNorm = (state.vpa || "").toLowerCase();
@@ -1112,28 +1052,18 @@
 
     var candParts = candNorm.split("@");
     var shopParts = shopNorm.split("@");
-    if (candParts[1] !== shopParts[1]) return false; // psp/domain must match exactly
+    if (candParts[1] !== shopParts[1]) return false;
 
     var candHandle = candParts[0];
     var shopHandle = shopParts[0];
     if (candHandle === shopHandle) return true;
 
     var visibleTail = candHandle.replace(/[*xX•.\-_]/g, "");
-    if (visibleTail.length < 4) return false; // too little visible to trust
+    if (visibleTail.length < 4) return false;
     return shopHandle.slice(-visibleTail.length) === visibleTail;
   }
 
-  // Pull a payee/merchant name out of the receipt text by looking for the
-  // common receipt labels apps use ("Paid to", "To", "Payee", "Receiver",
-  // "Merchant Name", "Beneficiary"), on the same line or the line after.
-  // This is ONLY used when no UPI ID at all is visible on the receipt — a
-  // freeform name can be a locally-saved contact nickname rather than who
-  // the ID is actually registered to, so it's a weaker signal than the ID.
   function extractPayeeName(text) {
-    // Try clearly-labeled lines first ("Payee Name: X", "Merchant: X"), then
-    // fall back to how success screens usually phrase it inline — "₹1,501
-    // paid to Poonam Electronics" or "You paid ... to Poonam Electronics" —
-    // which a label doesn't sit at the very start of the line for.
     var lines = text.split(/\r?\n/).map(function (l) { return l.trim(); }).filter(Boolean);
     var labelRe = /^(payee|receiver)(?:'?s)?\s*name\s*[:\-]?\s*(.*)$/i;
     for (var i = 0; i < lines.length; i++) {
@@ -1167,14 +1097,6 @@
     }
   }
 
-  // Who did this receipt actually pay? A VPA decoded straight from a QR
-  // code inside the receipt image is the strongest possible signal (exact,
-  // not OCR-guessed) and is checked first. After that, the UPI ID found in
-  // the receipt's OCR text is authoritative — it can't be a saved nickname
-  // or a mismatched registered name the way freeform text can, and it's
-  // checked even when only partially visible. A freeform name is only
-  // consulted when no ID at all is visible anywhere, and if nothing
-  // identifiable is found by any of these routes, this does NOT verify.
   function checkRecipient(text, qrParsed) {
     if (qrParsed && qrParsed.vpa) {
       return { ok: vpaMatchesRecipient(qrParsed.vpa), found: qrParsed.vpa, fromQr: true };
@@ -1303,21 +1225,12 @@
     }
   }
 
-  // Html5Qrcode.clear() doesn't reliably return a real Promise — it depends
-  // on the scanner's internal state at the time (e.g. after scanFile()
-  // fails to find a code), so chaining .catch() straight onto it can throw
-  // "Cannot read properties of undefined (reading 'catch')". Promise.resolve()
-  // normalizes either case safely.
   function safeClearScanner(scanner) {
     try {
       Promise.resolve(scanner && scanner.clear()).catch(function () {});
-    } catch (e) { /* ignore */ }
+    } catch (e) {}
   }
 
-  // If the receipt image happens to contain a scannable UPI QR code, decode
-  // it directly (exact — no OCR guessing involved) using the same QR
-  // reader already used for the shop's own QR. Resolves to null rather
-  // than rejecting when there's no QR to find, so it never blocks OCR.
   function tryDecodeReceiptQr(file) {
     if (typeof Html5Qrcode === "undefined") return Promise.resolve(null);
     var qrScanner = new Html5Qrcode("verifyQrRegion", { verbose: false });
@@ -1386,7 +1299,7 @@
     runReceiptVerification(file);
   });
 
-  /* ---------- Share (Web Share API, falls back to clipboard) ---------- */
+  /* ---------- Share ---------- */
   function buildShareText() {
     var paid = state.splits.filter(function (s) { return s.status === "paid"; }).length;
     var total = state.splits.length;
@@ -1417,7 +1330,6 @@
   $("shareDoneBtn").addEventListener("click", shareCompletion);
 
   /* ---------- Screen / step navigation ---------- */
-  var screenOrder = ["choose", "scan", "amount", "pay", "done"];
   function showScreen(name) {
     document.querySelectorAll(".screen").forEach(function (s) { s.classList.remove("active"); });
     $("screen-" + name).classList.add("active");
@@ -1429,7 +1341,6 @@
     var mapping = { choose: "scan", scan: "scan", amount: "amount", pay: "split", done: "done", history: null };
     var current = mapping[activeName];
     var order = ["scan", "amount", "split", "pay", "done"];
-    // "pay" screen covers both split-preview and payment; treat pay-in-progress as 'pay' after first mark
     var idx = order.indexOf(current === "split" ? (state.anyPaid ? "pay" : "split") : current);
     document.querySelectorAll(".step").forEach(function (el, i) {
       el.classList.remove("active", "done");
@@ -1455,6 +1366,14 @@
     applyTheme(isDark ? "light" : "dark");
   });
 
+  /* ---------- Orientation Startup Lock ---------- */
+  function lockToCurrentOrientation() {
+    if (screen.orientation && typeof screen.orientation.lock === "function") {
+      var currentType = screen.orientation.type;
+      screen.orientation.lock(currentType).catch(function () {});
+    }
+  }
+
   /* ---------- QR scanning ---------- */
   function startScanner() {
     $("scanError").textContent = "";
@@ -1463,7 +1382,7 @@
       return;
     }
     $("scanIdle").style.display = "none";
-    $("qrVideo").style.display = "none"; // html5-qrcode injects its own video/canvas
+    $("qrVideo").style.display = "none";
     var readerRegionId = "qrRegion";
     var frame = $("scanFrame");
     if (!$(readerRegionId)) {
@@ -1493,7 +1412,7 @@
         handleMerchantResolved(parsed);
         stopScanner();
       },
-      function onScanFailure() { /* fires continuously while no code is found — ignore */ }
+      function onScanFailure() {}
     ).catch(function (err) {
       state.scanning = false;
       $("startScanBtn").textContent = "Start camera";
@@ -1504,7 +1423,7 @@
       if (String(err).toLowerCase().indexOf("permission") !== -1 || String(err).toLowerCase().indexOf("notallowed") !== -1) {
         msg = "Camera permission was denied. Allow camera access in your browser settings, or enter the UPI ID manually below.";
       } else if (location.protocol !== "https:" && location.hostname !== "localhost") {
-        msg = "Camera access needs HTTPS. Once this is deployed on GitHub Pages it will work automatically.";
+        msg = "Camera access needs HTTPS.";
       }
       $("scanError").textContent = msg;
     });
@@ -1530,16 +1449,16 @@
     else startScanner();
   });
 
-  /* ---------- QR image upload (no camera needed) ---------- */
+  /* ---------- QR image upload ---------- */
   $("uploadQrBtn").addEventListener("click", function () { $("qrFileInput").click(); });
 
   $("qrFileInput").addEventListener("change", function (e) {
     var file = e.target.files && e.target.files[0];
-    e.target.value = ""; // allow re-selecting the same file later
+    e.target.value = "";
     if (!file) return;
     $("scanError").textContent = "";
     if (typeof Html5Qrcode === "undefined") {
-      $("scanError").textContent = "QR library failed to load. Check your connection and try again, or enter details manually.";
+      $("scanError").textContent = "QR library failed to load.";
       return;
     }
     if (state.scanning) stopScanner();
@@ -1555,7 +1474,7 @@
         handleMerchantResolved(parsed);
       }
     }).catch(function () {
-      $("scanError").textContent = "Couldn't read a QR code from that image. Try a clearer photo, or enter details manually.";
+      $("scanError").textContent = "Couldn't read a QR code from that image.";
     }).finally(function () {
       $("uploadQrBtn").disabled = false;
       $("uploadQrBtn").textContent = originalLabel;
@@ -1598,17 +1517,15 @@
     $("merchantInitial").textContent = state.name.charAt(0).toUpperCase();
     showScreen("amount");
 
-    // If the QR itself encoded a fixed (dynamic-QR) amount, prefill it —
-    // the user can still change it before splitting.
     if (result.amount) {
       $("billAmount").value = String(result.amount);
       validateAmountScreen();
     }
     if (result.currency && result.currency !== "INR") {
-      showToast("QR currency is " + result.currency + " — this app splits amounts as INR");
+      showToast("QR currency is " + result.currency);
     }
     if (result.crcValid === false) {
-      showToast("QR checksum didn't match — double-check the details before paying");
+      showToast("QR checksum didn't match");
     }
     setTimeout(function () { $("billAmount").focus(); }, 250);
   }
@@ -1646,7 +1563,7 @@
       return;
     }
     if (amount > 10000000) {
-      errEl.textContent = "That's a very large bill — double-check the amount";
+      errEl.textContent = "That's a very large bill";
       return;
     }
     if (!limit || limit <= 0) {
@@ -1775,7 +1692,6 @@
     var note = "Split " + (idx + 1) + " of " + state.splits.length + (state.name ? " to " + state.name : "");
     var uri = buildUpiUri(state.vpa, state.name, split.amount, note);
     window.location.href = uri;
-    // Give the user a nudge in case no UPI app is installed to catch the intent
     setTimeout(function () {
       showToast("If nothing opened, no UPI app was found on this device.");
     }, 900);
@@ -1818,7 +1734,7 @@
     $("toSplitBtn").disabled = true;
   }
 
-  /* ---------- History (localStorage only) ---------- */
+  /* ---------- History ---------- */
   function loadHistory() {
     try {
       return JSON.parse(localStorage.getItem(STORAGE_KEY) || "[]");
@@ -1881,6 +1797,7 @@
   /* ---------- Init ---------- */
   initTheme();
   initShopOption();
+  lockToCurrentOrientation(); // Locks app orientation to whatever position the device is currently holding
   showScreen("choose");
 
   if ("serviceWorker" in navigator) {
