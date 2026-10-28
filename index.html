@@ -22,6 +22,11 @@
   --accent-glow:rgba(52,211,153,0.35);
   --danger:#F87171;
   --radius:22px;
+  /* lite-mode solid surfaces */
+  --lite-card:#161E1A;
+  --lite-card-2:#1B2621;
+  --lite-input:#101714;
+  --lite-border:rgba(255,255,255,0.09);
 }
 @font-face{font-family:'Inter';src:url('https://cdn.jsdelivr.net/fontsource/fonts/inter@latest/latin-400-normal.woff2') format('woff2');font-weight:400;font-style:normal}
 @font-face{font-family:'Inter';src:url('https://cdn.jsdelivr.net/fontsource/fonts/inter@latest/latin-600-normal.woff2') format('woff2');font-weight:600;font-style:normal}
@@ -33,7 +38,7 @@ body{
   min-height:100dvh;overflow-x:hidden;position:relative;
 }
 
-/* ---------- ambient orbs ---------- */
+/* ---------- ambient orbs (glass mode only) ---------- */
 .bg-orbs{position:fixed;inset:0;z-index:0;pointer-events:none;overflow:hidden}
 .orb{position:absolute;border-radius:50%;filter:blur(90px);opacity:0.5;animation:orbFloat 14s ease-in-out infinite}
 .orb-1{width:340px;height:340px;background:#0e7a55;top:-90px;left:-80px}
@@ -46,7 +51,7 @@ body{
   66%{transform:translate(-24px,24px) scale(0.95)}
 }
 
-/* ---------- liquid glass ---------- */
+/* ---------- liquid glass primitives ---------- */
 .glass{
   position:relative;
   background:var(--glass-bg);
@@ -70,6 +75,68 @@ body{
   box-shadow:0 24px 80px rgba(0,0,0,0.6), inset 0 1px 0 rgba(255,255,255,0.15);
 }
 
+/* ============================================================
+   LITE MODE (default for new users — no glass, no frost,
+   no heavy blurs/animations, for low-end devices)
+============================================================ */
+body.fx-lite .bg-orbs{display:none}
+body.fx-lite .glass,
+body.fx-lite .glass-strong{
+  background:var(--lite-card);
+  backdrop-filter:none;-webkit-backdrop-filter:none;
+  border-color:var(--lite-border);
+  box-shadow:none;
+}
+body.fx-lite .glass-strong{background:var(--lite-card-2);border-color:rgba(255,255,255,0.12)}
+body.fx-lite .glass::before{display:none}
+body.fx-lite .glass-input{
+  backdrop-filter:none;-webkit-backdrop-filter:none;
+  background:var(--lite-input);border-color:var(--lite-border);
+}
+body.fx-lite .glass-input:focus{box-shadow:0 0 0 3px rgba(52,211,153,0.25)}
+body.fx-lite .btn-secondary{
+  backdrop-filter:none;-webkit-backdrop-filter:none;
+  background:#212C27;border-color:var(--lite-border);box-shadow:none;
+}
+body.fx-lite .btn-primary{box-shadow:0 4px 16px rgba(0,0,0,0.35)}
+body.fx-lite .btn-primary::after,
+body.fx-lite .btn-pay::after{display:none}
+body.fx-lite .saved-shop{
+  backdrop-filter:none;-webkit-backdrop-filter:none;
+  background:#17221D;border-color:rgba(52,211,153,0.25);box-shadow:none;
+}
+body.fx-lite .merchant-badge{backdrop-filter:none;-webkit-backdrop-filter:none;background:#14211B}
+body.fx-lite .settings-btn{
+  backdrop-filter:none;-webkit-backdrop-filter:none;
+  background:var(--lite-card-2);box-shadow:none;
+}
+body.fx-lite .pay-dock::before{
+  backdrop-filter:none;-webkit-backdrop-filter:none;
+  background:linear-gradient(to top,#0C1210 45%,rgba(12,18,16,0.9) 70%,transparent);
+}
+body.fx-lite .btn-pay{animation:none;box-shadow:0 6px 22px rgba(0,0,0,0.45)}
+body.fx-lite .modal-overlay{
+  backdrop-filter:none;-webkit-backdrop-filter:none;
+  background:rgba(0,0,0,0.72);
+}
+body.fx-lite .toast{
+  backdrop-filter:none;-webkit-backdrop-filter:none;
+  background:var(--lite-card-2);
+}
+body.fx-lite .tab.active{
+  backdrop-filter:none;-webkit-backdrop-filter:none;
+  background:#26322C;box-shadow:none;
+}
+body.fx-lite .amount-display{filter:none}
+body.fx-lite .split-item.current{box-shadow:0 0 0 1px rgba(52,211,153,0.35);transform:none}
+body.fx-lite .badge-verified{box-shadow:none;background:#14211B}
+body.fx-lite .verify-card{background:#17221D}
+body.fx-lite .verify-status{background:#101714}
+body.fx-lite .receipt-thumb{background:#101714}
+body.fx-lite .summary-item .val{text-shadow:none}
+body.fx-lite .progress-fill{box-shadow:none}
+body.fx-lite .settings-modal .s-note{color:var(--text-dim)}
+
 /* ---------- layout ---------- */
 #app{
   position:relative;z-index:1;max-width:440px;margin:0 auto;
@@ -78,8 +145,6 @@ body{
 }
 .screen{display:none;flex-direction:column;flex:1;padding:20px;animation:screenIn 0.45s cubic-bezier(0.22,1,0.36,1)}
 .screen.active{display:flex}
-/* FIX: pay screen scrolls as a whole page — the verify card is never
-   trapped behind the fixed Pay dock or inside an inner scroll area anymore */
 .screen.pay-mode{padding-bottom:170px}
 @keyframes screenIn{from{opacity:0;transform:translateY(16px) scale(0.99)}to{opacity:1;transform:translateY(0) scale(1)}}
 
@@ -99,6 +164,59 @@ body{
 .card{padding:22px;margin-bottom:14px}
 .card h2{font-size:17px;font-weight:600;margin-bottom:6px}
 .card p{font-size:13px;color:var(--text-dim);line-height:1.55}
+
+/* ---------- settings button (top-right) ---------- */
+.topbar{
+  position:fixed;top:0;left:50%;transform:translateX(-50%);
+  width:100%;max-width:440px;z-index:150;pointer-events:none;
+  display:flex;justify-content:flex-end;
+  padding:calc(12px + env(safe-area-inset-top)) 14px 0;
+}
+.settings-btn{
+  pointer-events:auto;width:44px;height:44px;border-radius:15px;
+  display:flex;align-items:center;justify-content:center;cursor:pointer;
+  border:1px solid var(--glass-border);color:var(--text);
+  background:var(--glass-bg-2);
+  backdrop-filter:blur(var(--blur));-webkit-backdrop-filter:blur(var(--blur));
+  box-shadow:inset 0 1px 0 rgba(255,255,255,0.12);
+  transition:transform 0.25s cubic-bezier(0.22,1,0.36,1);
+}
+.settings-btn:active{transform:scale(0.9) rotate(30deg)}
+.settings-btn svg{transition:transform 0.4s cubic-bezier(0.22,1,0.36,1)}
+.settings-btn:hover svg{transform:rotate(45deg)}
+
+/* ---------- settings panel ---------- */
+.settings-modal{text-align:left;padding:24px;max-width:380px;width:100%}
+.settings-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:6px}
+.settings-head h3{font-size:19px;font-weight:700}
+.settings-close{
+  width:34px;height:34px;border-radius:12px;border:1px solid var(--glass-border);
+  background:rgba(255,255,255,0.06);color:var(--text-dim);cursor:pointer;
+  display:flex;align-items:center;justify-content:center;font-family:inherit;
+  transition:all 0.2s;
+}
+.settings-close:hover{color:var(--text)}
+.s-note{font-size:12px;color:var(--text-dim);line-height:1.5;margin-bottom:16px}
+.switch-row{
+  display:flex;align-items:center;justify-content:space-between;gap:14px;
+  padding:16px;border-radius:16px;
+  background:rgba(255,255,255,0.04);border:1px solid var(--glass-border);
+}
+body.fx-lite .switch-row{background:#101714;border-color:var(--lite-border)}
+.s-title{font-size:14px;font-weight:700;margin-bottom:3px}
+.s-desc{font-size:11px;color:var(--text-dim);line-height:1.45}
+.switch{
+  position:relative;width:52px;height:30px;border-radius:16px;flex-shrink:0;
+  background:rgba(255,255,255,0.12);border:1px solid var(--glass-border);
+  cursor:pointer;transition:background 0.3s;border-style:solid;padding:0;
+}
+.switch .knob{
+  position:absolute;top:3px;left:3px;width:22px;height:22px;border-radius:50%;
+  background:#8A978F;transition:all 0.3s cubic-bezier(0.34,1.4,0.64,1);
+}
+.switch.on{background:rgba(52,211,153,0.35);border-color:rgba(52,211,153,0.5)}
+.switch.on .knob{left:25px;background:var(--accent);box-shadow:0 0 10px var(--accent-glow)}
+.settings-foot{margin-top:16px;font-size:11px;color:var(--text-dim);text-align:center}
 
 /* ---------- saved shop ---------- */
 .saved-shop{
@@ -245,7 +363,7 @@ body{
 .progress-text{display:flex;justify-content:space-between;font-size:13px;color:var(--text-dim);margin-bottom:2px}
 .progress-text b{color:var(--text)}
 
-/* ---------- verify last payment (now above the list, always reachable) ---------- */
+/* ---------- verify last payment ---------- */
 .verify-card{
   border:1px dashed rgba(52,211,153,0.4);
   background:linear-gradient(135deg,rgba(52,211,153,0.08),rgba(255,255,255,0.04));
@@ -299,8 +417,10 @@ body{
   border:1px solid rgba(52,211,153,0.35);
   box-shadow:0 0 30px var(--accent-glow);
 }
+body.fx-lite .modal .modal-icon{box-shadow:none}
 .modal h3{font-size:20px;font-weight:700;margin-bottom:8px}
 .modal .modal-amt{font-size:32px;font-weight:700;color:var(--accent);margin:6px 0 4px;text-shadow:0 0 24px var(--accent-glow)}
+body.fx-lite .modal .modal-amt{text-shadow:none}
 .modal p{font-size:13px;color:var(--text-dim);margin-bottom:22px;line-height:1.55}
 .modal-btns{display:flex;flex-direction:column;gap:10px}
 
@@ -356,6 +476,7 @@ body{
   background:var(--glass-bg-2)!important;color:var(--text)!important;border:1px solid var(--glass-border)!important;
   border-radius:12px!important;padding:9px 15px!important;font-family:inherit!important;cursor:pointer!important;margin:4px!important;
 }
+body.fx-lite #qr-reader__dashboard button{background:#212C27!important}
 #qr-reader__dashboard input[type=file]{display:none}
 #qr-reader img[alt="Info icon"]{display:none}
 #qr-reader__status_span,#qr-reader__header_message{color:var(--text-dim)!important;font-size:12px!important}
@@ -363,7 +484,7 @@ body{
 #qr-reader__camera_selection{background:rgba(255,255,255,0.06)!important;color:var(--text)!important;border:1px solid var(--glass-border)!important;border-radius:10px!important;padding:8px!important;font-family:inherit!important}
 
 .toast{
-  position:fixed;top:20px;left:50%;transform:translateX(-50%) translateY(-120px);
+  position:fixed;top:calc(16px + env(safe-area-inset-top));left:50%;transform:translateX(-50%) translateY(-160px);
   z-index:300;padding:13px 22px;border-radius:18px;font-size:13px;font-weight:600;
   background:rgba(20,32,27,0.8);border:1px solid var(--glass-border);
   backdrop-filter:blur(24px);-webkit-backdrop-filter:blur(24px);
@@ -382,7 +503,20 @@ body{
 }
 </style>
 </head>
-<body>
+<body class="fx-lite">
+
+<!-- apply saved UI preference before first paint (default = lite / no glass) -->
+<script>
+(function(){
+  try{
+    var s = JSON.parse(localStorage.getItem('splitr_settings') || 'null');
+    if (s && s.glass === true) {
+      document.body.classList.remove('fx-lite');
+      document.body.classList.add('fx-glass');
+    }
+  }catch(e){}
+})();
+</script>
 
 <div class="bg-orbs">
   <div class="orb orb-1"></div>
@@ -392,6 +526,13 @@ body{
 </div>
 
 <div class="toast" id="toast"></div>
+
+<!-- ================= SETTINGS BUTTON (top-right) ================= -->
+<div class="topbar">
+  <button class="settings-btn" onclick="openSettings()" aria-label="Settings" title="Settings">
+    <svg width="21" height="21" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 01-2.83 2.83l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09a1.65 1.65 0 00-1-1.51 1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83-2.83l.06-.06a1.65 1.65 0 00.33-1.82 1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09a1.65 1.65 0 001.51-1 1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 012.83-2.83l.06.06a1.65 1.65 0 001.82.33h.01a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51h.01a1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 2.83l-.06.06a1.65 1.65 0 00-.33 1.82v.01a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z"/></svg>
+  </button>
+</div>
 
 <div id="app">
 
@@ -523,7 +664,7 @@ body{
       <p style="margin-top:10px">Tap <b style="color:var(--accent)">Pay</b> below to open your UPI app. When you come back, tell us if it went through.</p>
     </div>
 
-    <!-- VERIFY LAST PAYMENT — moved ABOVE the list so it's always visible & reachable -->
+    <!-- VERIFY LAST PAYMENT — above the list, always visible & reachable -->
     <div class="card glass verify-card" id="verify-card" style="display:none">
       <div class="verify-head">
         <h2>Optional — Verify last payment</h2>
@@ -611,6 +752,31 @@ body{
   </button>
 </div>
 
+<!-- ================= SETTINGS PANEL ================= -->
+<div class="modal-overlay" id="settings-overlay" onclick="if(event.target===this)closeSettings()">
+  <div class="modal glass-strong settings-modal">
+    <div class="settings-head">
+      <h3>Settings</h3>
+      <button class="settings-close" onclick="closeSettings()" aria-label="Close settings">
+        <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" viewBox="0 0 24 24"><path d="M18 6L6 18M6 6l12 12"/></svg>
+      </button>
+    </div>
+    <p class="s-note">Customize how Splitr looks and performs on your device.</p>
+
+    <div class="switch-row">
+      <div>
+        <div class="s-title">Frosted Glass UI</div>
+        <div class="s-desc">Liquid-glass blur, glows & background animations. Keep <b>OFF</b> on low-end devices for smooth performance.</div>
+      </div>
+      <button class="switch" id="glass-switch" role="switch" aria-checked="false" aria-label="Toggle frosted glass UI" onclick="toggleGlass()">
+        <span class="knob"></span>
+      </button>
+    </div>
+
+    <div class="settings-foot">Your choice is saved on this device only.</div>
+  </div>
+</div>
+
 <!-- ================= CONFIRM MODAL ================= -->
 <div class="modal-overlay" id="modal-confirm">
   <div class="modal glass-strong">
@@ -635,6 +801,46 @@ body{
 
 <script>
 /* ============================================================
+   UI settings — Frosted Glass toggle
+   DEFAULT for new users: glass OFF (lite mode, no lag on
+   low-end devices). The user can turn it ON anytime from
+   Settings (top-right gear). Choice persists in localStorage.
+============================================================ */
+const SETTINGS_KEY = 'splitr_settings';
+let settings = { glass: false };   // ← default = no glass / no frost
+try {
+  const saved = JSON.parse(localStorage.getItem(SETTINGS_KEY) || 'null');
+  if (saved && typeof saved.glass === 'boolean') settings.glass = saved.glass;
+} catch (e) {}
+
+function applySettings() {
+  document.body.classList.toggle('fx-glass', settings.glass);
+  document.body.classList.toggle('fx-lite', !settings.glass);
+  const sw = document.getElementById('glass-switch');
+  if (sw) {
+    sw.classList.toggle('on', settings.glass);
+    sw.setAttribute('aria-checked', String(settings.glass));
+  }
+}
+function saveSettings() {
+  try { localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings)); } catch (e) {}
+}
+function toggleGlass() {
+  settings.glass = !settings.glass;
+  saveSettings();
+  applySettings();
+  buzz(25);
+  toast(settings.glass ? 'Frosted glass UI turned ON ✨' : 'Lite mode ON — glass & animations disabled for speed.', 'ok');
+}
+function openSettings() {
+  applySettings();
+  document.getElementById('settings-overlay').classList.add('active');
+}
+function closeSettings() {
+  document.getElementById('settings-overlay').classList.remove('active');
+}
+
+/* ============================================================
    Saved shop — Poonam Electronics (real Paytm QR VPA)
 ============================================================ */
 const SAVED_SHOP = {
@@ -654,7 +860,7 @@ let html5QrCode = null;
 let scannerRunning = false;
 let awaitingConfirmation = false;
 let handoffDone = false;
-let wentHidden = false;          // did the page actually lose visibility (UPI app opened)?
+let wentHidden = false;
 let receiptVerified = false;
 let lastReceiptAmount = null;
 let verifying = false;
@@ -998,7 +1204,6 @@ function updateVerifyCard() {
   card.style.display = 'block';
   lastReceiptAmount = splits[idx].amount;
   document.getElementById('verify-amt').textContent = fmt(lastReceiptAmount) + ` · part ${idx + 1}`;
-  // show the Finish button only once every split is settled
   const anyPending = splits.some(s => s.status === 'pending');
   document.getElementById('btn-finish-split').style.display = anyPending ? 'none' : 'flex';
 }
@@ -1145,8 +1350,7 @@ function initiatePayment() {
     if (!awaitingConfirmation || handoffDone) return;
     if (wentHidden) { showConfirmModal(); }
     else {
-      // page never lost visibility → UPI app probably didn't open (iOS / no app installed)
-      toast(`UPI app didn't open? Pay ${fmt(s.amount)} manually to ${currentUPI}, then tap Pay again or use the list.`);
+      toast(`UPI app didn't open? Pay ${fmt(s.amount)} manually to ${currentUPI} (use Copy UPI ID), then mark it from the list.`);
     }
   }, 2600);
 }
@@ -1177,7 +1381,6 @@ function confirmPayment(success) {
     currentSplitIndex = splits.length - 1;
     renderSplits();
     document.getElementById('pay-dock').classList.remove('visible');
-    // bring the verify/finish card into view so it's impossible to miss
     setTimeout(() => {
       document.getElementById('verify-card').scrollIntoView({ behavior: 'smooth', block: 'center' });
     }, 250);
@@ -1332,6 +1535,7 @@ document.getElementById('saved-shop-name').textContent = SAVED_SHOP.name;
 document.getElementById('saved-shop-upi').textContent = SAVED_SHOP.upi;
 document.getElementById('pay-limit').value = MAX_LIMIT;
 updateLimitInfo();
+applySettings();   // apply saved UI mode (default: lite / no glass)
 
 if ('serviceWorker' in navigator) {
   navigator.serviceWorker.register('./sw.js').catch(() => {});
