@@ -2,1810 +2,1340 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 <title>Splitr — Split any UPI bill</title>
-<meta name="description" content="Scan a UPI QR code, split the bill into payments under any limit, and pay each one with your own UPI app.">
-<meta name="theme-color" content="#0C1210">
 <link rel="manifest" href="manifest.json">
-<link rel="icon" href="icons/icon-192.png">
-<link rel="apple-touch-icon" href="icons/icon-192.png">
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<meta name="theme-color" content="#0C1210">
+<script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
 <style>
-  :root {
-    --bg: #F6F7F2;
-    --surface: #FFFFFF;
-    --ink: #11171A;
-    --muted: #5B6773;
-    --accent: #0E8F72;
-    --accent-ink: #06322A;
-    --pending: #B5720F;
-    --success: #187A4C;
-    --danger: #B43A22;
-    --line: #E2E5DD;
-    --focus: #0E8F72;
-    color-scheme: light;
-  }
-  html.dark {
-    --bg: #0C1210;
-    --surface: #131C19;
-    --ink: #EAF0EC;
-    --muted: #8FA39A;
-    --accent: #2FD9AE;
-    --accent-ink: #06251E;
-    --pending: #E8A94E;
-    --success: #4FD98D;
-    --danger: #F1806A;
-    --line: #223028;
-    --focus: #2FD9AE;
-    color-scheme: dark;
-  }
-  * { box-sizing: border-box; }
-  html, body { margin: 0; padding: 0; }
-  body {
-    font-family: 'Manrope', system-ui, -apple-system, sans-serif;
-    background: var(--bg);
-    color: var(--ink);
-    min-height: 100vh;
-    -webkit-font-smoothing: antialiased;
-    transition: background .25s ease, color .25s ease;
-  }
-  .shell {
-    max-width: 480px;
-    margin: 0 auto;
-    min-height: 100vh;
-    display: flex;
-    flex-direction: column;
-    padding: env(safe-area-inset-top) 0 env(safe-area-inset-bottom);
-  }
-  /* Header */
-  .topbar {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    padding: 18px 20px 8px;
-  }
-  .wordmark {
-    font-weight: 800;
-    font-size: 1.15rem;
-    letter-spacing: -0.02em;
-  }
-  .wordmark span { color: var(--accent); }
-  .icon-btn {
-    background: none;
-    border: 1px solid var(--line);
-    color: var(--ink);
-    width: 38px;
-    height: 38px;
-    border-radius: 10px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    cursor: pointer;
-  }
-  .icon-btn:focus-visible, button:focus-visible, input:focus-visible, a:focus-visible {
-    outline: 2px solid var(--focus);
-    outline-offset: 2px;
-  }
+*{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+:root{
+  --bg:#0C1210;
+  --glass-bg:rgba(255,255,255,0.055);
+  --glass-bg-2:rgba(255,255,255,0.09);
+  --glass-border:rgba(255,255,255,0.13);
+  --glass-shadow:0 10px 40px rgba(0,0,0,0.45);
+  --blur:22px;
+  --text:#EAF3EE;
+  --text-dim:rgba(234,243,238,0.55);
+  --accent:#34D399;
+  --accent-glow:rgba(52,211,153,0.35);
+  --danger:#F87171;
+  --radius:22px;
+}
+@font-face{font-family:'Inter';src:url('https://cdn.jsdelivr.net/fontsource/fonts/inter@latest/latin-400-normal.woff2') format('woff2');font-weight:400;font-style:normal}
+@font-face{font-family:'Inter';src:url('https://cdn.jsdelivr.net/fontsource/fonts/inter@latest/latin-600-normal.woff2') format('woff2');font-weight:600;font-style:normal}
+@font-face{font-family:'Inter';src:url('https://cdn.jsdelivr.net/fontsource/fonts/inter@latest/latin-700-normal.woff2') format('woff2');font-weight:700;font-style:normal}
+html,body{height:100%}
+body{
+  font-family:'Inter',system-ui,-apple-system,sans-serif;
+  background:var(--bg);color:var(--text);
+  min-height:100dvh;overflow-x:hidden;position:relative;
+}
 
-  /* Stepper */
-  .stepper {
-    display: flex;
-    align-items: center;
-    padding: 6px 24px 18px;
-    gap: 4px;
-  }
-  .step {
-    flex: 1;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: 6px;
-    position: relative;
-  }
-  .step .dot {
-    width: 9px;
-    height: 9px;
-    border-radius: 50%;
-    background: var(--line);
-    transition: background .2s ease, transform .2s ease;
-    z-index: 1;
-  }
-  .step.done .dot { background: var(--accent); }
-  .step.active .dot { background: var(--accent); transform: scale(1.4); }
-  .step .rail {
-    position: absolute;
-    top: 4px;
-    left: 50%;
-    width: 100%;
-    height: 1px;
-    background: var(--line);
-  }
-  .step:first-child .rail { display: none; }
-  .step.done .rail, .step.active .rail { background: var(--accent); }
-  .step label {
-    font-size: 0.62rem;
-    color: var(--muted);
-    font-weight: 600;
-    letter-spacing: 0.01em;
-  }
-  .step.active label, .step.done label { color: var(--ink); }
+/* ---------- ambient orbs ---------- */
+.bg-orbs{position:fixed;inset:0;z-index:0;pointer-events:none;overflow:hidden}
+.orb{position:absolute;border-radius:50%;filter:blur(90px);opacity:0.5;animation:orbFloat 14s ease-in-out infinite}
+.orb-1{width:340px;height:340px;background:#0e7a55;top:-90px;left:-80px}
+.orb-2{width:280px;height:280px;background:#3b47c4;bottom:2%;right:-90px;animation-delay:-5s}
+.orb-3{width:220px;height:220px;background:#0b6e8a;top:38%;left:40%;animation-delay:-9s;opacity:0.35}
+.orb-4{width:180px;height:180px;background:#7c3aed;top:60%;left:-60px;animation-delay:-3s;opacity:0.28}
+@keyframes orbFloat{
+  0%,100%{transform:translate(0,0) scale(1)}
+  33%{transform:translate(36px,-28px) scale(1.08)}
+  66%{transform:translate(-24px,24px) scale(0.95)}
+}
 
-  main {
-    flex: 1;
-    padding: 8px 20px 32px;
-    display: flex;
-    flex-direction: column;
-  }
-  .screen { display: none; flex-direction: column; flex: 1; animation: rise .28s ease; }
-  .screen.active { display: flex; }
-  @keyframes rise { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: translateY(0); } }
-  @media (prefers-reduced-motion: reduce) {
-    .screen { animation: none; }
-    * { transition: none !important; }
-  }
+/* ---------- liquid glass ---------- */
+.glass{
+  position:relative;
+  background:var(--glass-bg);
+  backdrop-filter:blur(var(--blur)) saturate(160%);
+  -webkit-backdrop-filter:blur(var(--blur)) saturate(160%);
+  border:1px solid var(--glass-border);
+  border-radius:var(--radius);
+  box-shadow:var(--glass-shadow), inset 0 1px 0 rgba(255,255,255,0.12);
+}
+.glass::before{
+  content:'';position:absolute;inset:0;border-radius:inherit;pointer-events:none;
+  background:linear-gradient(135deg,rgba(255,255,255,0.14) 0%,rgba(255,255,255,0.02) 30%,rgba(255,255,255,0) 60%,rgba(255,255,255,0.05) 100%);
+  mix-blend-mode:screen;
+}
+.glass-strong{
+  background:rgba(20,32,27,0.55);
+  backdrop-filter:blur(40px) saturate(180%);
+  -webkit-backdrop-filter:blur(40px) saturate(180%);
+  border:1px solid rgba(255,255,255,0.18);
+  border-radius:var(--radius);
+  box-shadow:0 24px 80px rgba(0,0,0,0.6), inset 0 1px 0 rgba(255,255,255,0.15);
+}
 
-  h1.title { font-size: 1.4rem; font-weight: 800; letter-spacing: -0.02em; margin: 4px 0 4px; }
-  p.sub { color: var(--muted); font-size: 0.92rem; margin: 0 0 20px; line-height: 1.5; }
+/* ---------- layout ---------- */
+#app{
+  position:relative;z-index:1;max-width:440px;margin:0 auto;
+  min-height:100dvh;display:flex;flex-direction:column;
+  padding-bottom:env(safe-area-inset-bottom);
+}
+.screen{display:none;flex-direction:column;flex:1;padding:20px;animation:screenIn 0.45s cubic-bezier(0.22,1,0.36,1)}
+.screen.active{display:flex}
+/* FIX: pay screen scrolls as a whole page — the verify card is never
+   trapped behind the fixed Pay dock or inside an inner scroll area anymore */
+.screen.pay-mode{padding-bottom:170px}
+@keyframes screenIn{from{opacity:0;transform:translateY(16px) scale(0.99)}to{opacity:1;transform:translateY(0) scale(1)}}
 
-  /* Scan screen */
-  .scan-frame {
-    position: relative;
-    width: 100%;
-    aspect-ratio: 1/1;
-    background: #000;
-    border-radius: 20px;
-    overflow: hidden;
-    border: 1px solid var(--line);
-  }
-  .scan-frame video { width: 100%; height: 100%; object-fit: cover; }
-  .scan-frame .reticle {
-    position: absolute;
-    inset: 14%;
-    border: 2px solid rgba(255,255,255,0.85);
-    border-radius: 16px;
-    box-shadow: 0 0 0 999px rgba(0,0,0,0.28);
-  }
-  .scan-frame .reticle::before, .scan-frame .reticle::after {
-    content: '';
-  }
-  .scan-hint {
-    position: absolute;
-    bottom: 14px;
-    left: 0; right: 0;
-    text-align: center;
-    color: #fff;
-    font-size: 0.8rem;
-    font-weight: 600;
-    text-shadow: 0 1px 4px rgba(0,0,0,0.5);
-  }
-  .scan-idle {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    gap: 10px;
-    height: 100%;
-    color: #9fb0aa;
-  }
-  .divider-row {
-    display: flex;
-    align-items: center;
-    gap: 12px;
-    margin: 22px 0;
-    color: var(--muted);
-    font-size: 0.78rem;
-    font-weight: 600;
-  }
-  .divider-row::before, .divider-row::after {
-    content: '';
-    flex: 1;
-    height: 1px;
-    background: var(--line);
-  }
+.header{text-align:center;padding:28px 0 10px}
+.header h1{font-size:30px;font-weight:700;letter-spacing:-0.6px}
+.header h1 span{
+  background:linear-gradient(135deg,#34D399,#7dd3fc);
+  -webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent;
+}
+.header p{font-size:13px;color:var(--text-dim);margin-top:6px}
 
-  .field {
-    display: flex;
-    flex-direction: column;
-    gap: 6px;
-    margin-bottom: 14px;
-  }
-  .field label { font-size: 0.78rem; font-weight: 600; color: var(--muted); }
-  .field input[type="text"] {
-    background: var(--surface);
-    border: 1px solid var(--line);
-    color: var(--ink);
-    border-radius: 12px;
-    padding: 13px 14px;
-    font-size: 0.98rem;
-    font-family: inherit;
-  }
+.stepper{display:flex;align-items:center;justify-content:center;gap:6px;padding:16px 0 22px}
+.step-dot{width:8px;height:8px;border-radius:50%;background:rgba(255,255,255,0.14);transition:all 0.4s cubic-bezier(0.22,1,0.36,1)}
+.step-dot.active{background:var(--accent);box-shadow:0 0 14px var(--accent-glow);width:26px;border-radius:5px}
+.step-dot.done{background:rgba(52,211,153,0.55)}
 
-  .merchant-card {
-    display: flex;
-    align-items: center;
-    gap: 12px;
-    background: var(--surface);
-    border: 1px solid var(--line);
-    border-radius: 16px;
-    padding: 14px 16px;
-    margin-bottom: 18px;
-  }
-  .merchant-avatar {
-    width: 42px; height: 42px;
-    border-radius: 50%;
-    background: var(--accent);
-    color: var(--accent-ink);
-    display: flex; align-items: center; justify-content: center;
-    font-weight: 800;
-    flex-shrink: 0;
-  }
-  .merchant-name { font-weight: 700; font-size: 0.98rem; }
-  .merchant-vpa { font-size: 0.8rem; color: var(--muted); word-break: break-all; }
-  .merchant-edit {
-    margin-left: auto;
-    background: none; border: none; color: var(--accent);
-    font-weight: 700; font-size: 0.82rem; cursor: pointer; white-space: nowrap;
-  }
+.card{padding:22px;margin-bottom:14px}
+.card h2{font-size:17px;font-weight:600;margin-bottom:6px}
+.card p{font-size:13px;color:var(--text-dim);line-height:1.55}
 
-  /* Choose destination screen */
-  .option-card {
-    display: flex;
-    align-items: center;
-    gap: 14px;
-    background: var(--surface);
-    border: 1px solid var(--line);
-    border-radius: 18px;
-    padding: 18px;
-    margin-bottom: 14px;
-    cursor: pointer;
-    text-align: left;
-    width: 100%;
-    font-family: inherit;
-    color: var(--ink);
-  }
-  .option-card.primary {
-    border-color: var(--accent);
-    background: color-mix(in srgb, var(--accent) 10%, var(--surface));
-  }
-  .option-card .opt-icon {
-    width: 46px; height: 46px;
-    border-radius: 50%;
-    background: var(--accent);
-    color: var(--accent-ink);
-    display: flex; align-items: center; justify-content: center;
-    flex-shrink: 0;
-  }
-  .option-card.secondary .opt-icon {
-    background: var(--bg);
-    color: var(--muted);
-    border: 1px solid var(--line);
-  }
-  .option-card .opt-text { flex: 1; min-width: 0; }
-  .option-card .opt-title { font-weight: 800; font-size: 1rem; }
-  .option-card .opt-sub { font-size: 0.8rem; color: var(--muted); margin-top: 2px; word-break: break-all; }
-  .option-card .opt-chevron { color: var(--muted); flex-shrink: 0; }
+/* ---------- saved shop ---------- */
+.saved-shop{
+  display:flex;align-items:center;gap:14px;width:100%;
+  padding:16px 18px;margin-bottom:14px;cursor:pointer;
+  border-radius:var(--radius);text-align:left;
+  transition:transform 0.25s cubic-bezier(0.22,1,0.36,1);
+  background:linear-gradient(135deg,rgba(52,211,153,0.14),rgba(125,211,252,0.06));
+  backdrop-filter:blur(var(--blur)) saturate(160%);
+  -webkit-backdrop-filter:blur(var(--blur)) saturate(160%);
+  border:1px solid rgba(52,211,153,0.3);
+  box-shadow:0 8px 32px rgba(52,211,153,0.12), inset 0 1px 0 rgba(255,255,255,0.15);
+  font-family:inherit;color:var(--text);
+}
+.saved-shop:active{transform:scale(0.97)}
+.saved-shop .shop-avatar{
+  width:48px;height:48px;border-radius:16px;flex-shrink:0;
+  display:flex;align-items:center;justify-content:center;
+  font-size:20px;font-weight:700;color:#04150e;
+  background:linear-gradient(135deg,#6ee7b7,#059669);
+  box-shadow:0 4px 18px var(--accent-glow), inset 0 1px 0 rgba(255,255,255,0.4);
+}
+.saved-shop .shop-info{flex:1;min-width:0}
+.saved-shop .shop-name{font-size:16px;font-weight:700;margin-bottom:2px}
+.saved-shop .shop-sub{font-size:12px;color:var(--text-dim);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.saved-shop .shop-go{
+  font-size:12px;font-weight:700;color:var(--accent);
+  padding:8px 14px;border-radius:14px;flex-shrink:0;
+  background:rgba(52,211,153,0.14);border:1px solid rgba(52,211,153,0.3);
+}
 
-  /* Amount screen */
-  .amount-input-wrap {
-    display: flex;
-    align-items: baseline;
-    justify-content: center;
-    gap: 4px;
-    padding: 28px 0 8px;
-  }
-  .rupee-sign { font-size: 2rem; font-weight: 800; color: var(--muted); }
-  #billAmount {
-    font-family: 'Manrope', sans-serif;
-    font-variant-numeric: tabular-nums;
-    font-size: 3.2rem;
-    font-weight: 800;
-    letter-spacing: -0.02em;
-    background: none;
-    border: none;
-    color: var(--ink);
-    width: 100%;
-    max-width: 260px;
-    text-align: center;
-  }
-  .limit-row {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    background: var(--surface);
-    border: 1px solid var(--line);
-    border-radius: 14px;
-    padding: 12px 16px;
-    margin: 18px 0;
-  }
-  .limit-row-text { display: flex; flex-direction: column; }
-  .limit-row-text strong { font-size: 0.88rem; font-weight: 700; }
-  .limit-row-text span { font-size: 0.74rem; color: var(--muted); }
-  .limit-edit-input {
-    width: 84px;
-    text-align: right;
-    background: var(--bg);
-    border: 1px solid var(--line);
-    color: var(--ink);
-    border-radius: 8px;
-    padding: 7px 8px;
-    font-family: inherit;
-    font-weight: 700;
-    font-variant-numeric: tabular-nums;
-  }
-  .preview-line {
-    font-size: 0.85rem;
-    color: var(--muted);
-    text-align: center;
-    min-height: 1.2em;
-  }
-  .preview-line strong { color: var(--ink); }
+.input-group{margin:14px 0}
+.input-group label{font-size:11px;color:var(--text-dim);text-transform:uppercase;letter-spacing:1.2px;margin-bottom:8px;display:block;font-weight:600}
+.glass-input{
+  width:100%;padding:15px 18px;
+  background:rgba(255,255,255,0.05);
+  border:1px solid rgba(255,255,255,0.1);
+  border-radius:16px;color:var(--text);font-size:16px;font-family:inherit;outline:none;
+  backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);
+  transition:all 0.3s;
+}
+.glass-input:focus{border-color:var(--accent);box-shadow:0 0 0 4px var(--accent-glow);background:rgba(255,255,255,0.07)}
+.glass-input::placeholder{color:rgba(255,255,255,0.22)}
 
-  /* Split list */
-  .summary-hero {
-    text-align: center;
-    padding: 6px 0 20px;
-  }
-  .summary-hero .amount {
-    font-size: 2.6rem;
-    font-weight: 800;
-    letter-spacing: -0.02em;
-    font-variant-numeric: tabular-nums;
-  }
-  .summary-hero .meta {
-    color: var(--muted);
-    font-size: 0.85rem;
-    margin-top: 2px;
-  }
-  .progress-track {
-    height: 6px;
-    background: var(--line);
-    border-radius: 999px;
-    overflow: hidden;
-    margin: 14px 0 22px;
-  }
-  .progress-fill {
-    height: 100%;
-    background: var(--accent);
-    border-radius: 999px;
-    width: 0%;
-    transition: width .3s ease;
-  }
-  .split-list { display: flex; flex-direction: column; }
-  .split-item {
-    display: flex;
-    align-items: center;
-    gap: 12px;
-    padding: 14px 2px;
-    border-bottom: 1px solid var(--line);
-  }
-  .split-item:last-child { border-bottom: none; }
-  .split-index {
-    width: 30px; height: 30px;
-    border-radius: 50%;
-    background: var(--bg);
-    border: 1px solid var(--line);
-    display: flex; align-items: center; justify-content: center;
-    font-size: 0.78rem; font-weight: 700; color: var(--muted);
-    flex-shrink: 0;
-  }
-  .split-main { flex: 1; min-width: 0; }
-  .split-amount { font-size: 1.15rem; font-weight: 800; font-variant-numeric: tabular-nums; }
-  .split-status { font-size: 0.74rem; font-weight: 700; margin-top: 1px; }
-  .split-status.pending { color: var(--pending); }
-  .split-status.paid { color: var(--success); }
-  .split-status.failed { color: var(--danger); }
-  .split-actions { display: flex; gap: 6px; flex-shrink: 0; }
-  .pill-btn {
-    border: 1px solid var(--line);
-    background: var(--surface);
-    color: var(--ink);
-    padding: 8px 12px;
-    border-radius: 999px;
-    font-size: 0.78rem;
-    font-weight: 700;
-    cursor: pointer;
-    white-space: nowrap;
-    font-family: inherit;
-  }
-  .pill-btn.pay { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
-  .pill-btn.mark-ok { color: var(--success); border-color: var(--success); background: none; }
-  .pill-btn.mark-fail { color: var(--danger); border-color: var(--danger); background: none; }
-  .icon-only { width: 34px; padding: 0; display: flex; align-items: center; justify-content: center; }
+.amount-display{
+  font-size:52px;font-weight:700;text-align:center;padding:14px 0 4px;
+  background:linear-gradient(135deg,#6ee7b7,#34D399);
+  -webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent;
+  filter:drop-shadow(0 0 24px var(--accent-glow));
+}
 
-  /* Verify last payment (optional) */
-  .verify-card {
-    background: var(--surface);
-    border: 1px solid var(--line);
-    border-radius: 16px;
-    padding: 16px;
-    margin-top: 6px;
-  }
-  .verify-card-head {
-    display: flex;
-    align-items: baseline;
-    gap: 8px;
-    margin-bottom: 4px;
-  }
-  .verify-card-head strong {
-    font-size: 0.68rem;
-    font-weight: 800;
-    letter-spacing: 0.04em;
-    text-transform: uppercase;
-    color: var(--accent);
-  }
-  .verify-card-head span { font-weight: 700; font-size: 0.92rem; }
-  .verify-checklist { display: flex; flex-direction: column; gap: 8px; margin: 4px 0 2px; }
-  .verify-check { font-size: 0.85rem; font-weight: 600; display: flex; align-items: center; gap: 8px; }
-  .verify-check.ok { color: var(--success); }
-  .verify-check.bad { color: var(--danger); }
-  .verify-verdict {
-    margin-top: 12px;
-    padding: 12px 14px;
-    border-radius: 12px;
-    font-size: 0.9rem;
-    font-weight: 800;
-    line-height: 1.5;
-  }
-  .verify-verdict.ok {
-    background: color-mix(in srgb, var(--success) 14%, var(--surface));
-    color: var(--success);
-  }
-  .verify-spinner-row { display: flex; align-items: center; gap: 10px; padding: 4px 0; }
-  .spinner {
-    width: 18px; height: 18px;
-    border-radius: 50%;
-    border: 2.5px solid var(--line);
-    border-top-color: var(--accent);
-    animation: spin .8s linear infinite;
-    flex-shrink: 0;
-  }
-  @keyframes spin { to { transform: rotate(360deg); } }
-  .verified-badge[hidden] { display: none; }
-  .verified-badge {
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-    margin: 2px auto 0;
-    padding: 6px 12px;
-    border-radius: 999px;
-    background: color-mix(in srgb, var(--success) 14%, var(--surface));
-    color: var(--success);
-    font-size: 0.78rem;
-    font-weight: 800;
-    width: fit-content;
-  }
+/* ---------- buttons ---------- */
+.btn{
+  padding:16px 22px;border:none;border-radius:18px;font-size:15px;font-weight:600;
+  font-family:inherit;cursor:pointer;transition:all 0.25s cubic-bezier(0.22,1,0.36,1);
+  display:flex;align-items:center;justify-content:center;gap:10px;width:100%;
+  position:relative;overflow:hidden;
+}
+.btn:active{transform:scale(0.97)}
+.btn:disabled{opacity:0.5;pointer-events:none}
+.btn-primary{
+  background:linear-gradient(135deg,#34D399,#059669);color:#04150e;
+  box-shadow:0 6px 28px var(--accent-glow), inset 0 1px 0 rgba(255,255,255,0.35);
+}
+.btn-primary::after{
+  content:'';position:absolute;top:0;left:-80%;width:50%;height:100%;
+  background:linear-gradient(100deg,transparent,rgba(255,255,255,0.35),transparent);
+  transform:skewX(-20deg);animation:sheen 3.2s ease-in-out infinite;
+}
+@keyframes sheen{0%{left:-80%}45%{left:140%}100%{left:140%}}
+.btn-secondary{
+  background:var(--glass-bg-2);color:var(--text);
+  border:1px solid var(--glass-border);
+  backdrop-filter:blur(var(--blur));-webkit-backdrop-filter:blur(var(--blur));
+  box-shadow:inset 0 1px 0 rgba(255,255,255,0.12);
+}
+.btn-danger{background:rgba(248,113,113,0.14);color:var(--danger);border:1px solid rgba(248,113,113,0.22)}
+.btn-sm{padding:12px 18px;font-size:13px;border-radius:14px}
 
-  /* Buttons */
-  .primary-btn {
-    background: var(--accent);
-    color: var(--accent-ink);
-    border: none;
-    padding: 15px 20px;
-    border-radius: 14px;
-    font-size: 1rem;
-    font-weight: 800;
-    font-family: inherit;
-    cursor: pointer;
-    width: 100%;
-  }
-  .primary-btn:disabled { opacity: 0.4; cursor: not-allowed; }
-  .secondary-btn {
-    background: none;
-    border: 1px solid var(--line);
-    color: var(--ink);
-    padding: 14px 20px;
-    border-radius: 14px;
-    font-size: 0.95rem;
-    font-weight: 700;
-    font-family: inherit;
-    cursor: pointer;
-    width: 100%;
-  }
-  .text-btn {
-    background: none; border: none; color: var(--muted);
-    font-size: 0.85rem; font-weight: 700; padding: 10px; cursor: pointer; font-family: inherit;
-  }
-  .btn-row { display: flex; flex-direction: column; gap: 10px; margin-top: auto; padding-top: 18px; }
+/* ---------- big bottom Pay button ---------- */
+.pay-dock{
+  position:fixed;bottom:0;left:50%;transform:translateX(-50%) translateY(120%);
+  width:100%;max-width:440px;z-index:100;
+  padding:16px 18px calc(18px + env(safe-area-inset-bottom));
+  transition:transform 0.45s cubic-bezier(0.22,1,0.36,1);
+  pointer-events:none;
+}
+.pay-dock.visible{transform:translateX(-50%) translateY(0);pointer-events:auto}
+.pay-dock::before{
+  content:'';position:absolute;inset:-30px 0 0;
+  background:linear-gradient(to top,rgba(12,18,16,0.85) 30%,transparent);
+  backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);
+  pointer-events:none;z-index:-1;
+}
+.btn-pay{
+  width:100%;padding:20px 26px;border:none;border-radius:26px;cursor:pointer;
+  font-family:inherit;font-size:21px;font-weight:700;color:#04150e;
+  background:linear-gradient(135deg,#4ade80,#059669);
+  box-shadow:0 10px 44px rgba(52,211,153,0.5), inset 0 2px 0 rgba(255,255,255,0.45), inset 0 -3px 8px rgba(0,0,0,0.15);
+  display:flex;align-items:center;justify-content:center;gap:12px;
+  position:relative;overflow:hidden;
+  transition:transform 0.2s cubic-bezier(0.22,1,0.36,1);
+  animation:payPulse 2.4s ease-in-out infinite;
+}
+@keyframes payPulse{
+  0%,100%{box-shadow:0 10px 44px rgba(52,211,153,0.45), inset 0 2px 0 rgba(255,255,255,0.45)}
+  50%{box-shadow:0 10px 60px rgba(52,211,153,0.75), inset 0 2px 0 rgba(255,255,255,0.45)}
+}
+.btn-pay:active{transform:scale(0.96);animation:none}
+.btn-pay::after{
+  content:'';position:absolute;top:0;left:-80%;width:50%;height:100%;
+  background:linear-gradient(100deg,transparent,rgba(255,255,255,0.5),transparent);
+  transform:skewX(-20deg);animation:sheen 2.8s ease-in-out infinite;
+}
+.btn-pay .pay-sub{display:block;font-size:10px;font-weight:600;opacity:0.75;letter-spacing:0.5px;max-width:230px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.btn-pay .pay-main{display:flex;flex-direction:column;align-items:flex-start;line-height:1.15;min-width:0}
+.btn-pay .pay-amt{font-size:24px;font-weight:700}
 
-  .banner {
-    display: flex;
-    gap: 10px;
-    align-items: flex-start;
-    background: var(--surface);
-    border: 1px solid var(--line);
-    border-radius: 14px;
-    padding: 12px 14px;
-    font-size: 0.8rem;
-    color: var(--muted);
-    line-height: 1.45;
-    margin-bottom: 16px;
-  }
-  .banner strong { color: var(--ink); }
+/* ---------- splits ---------- */
+.split-list{display:flex;flex-direction:column;gap:10px;padding-bottom:10px}
+.split-item{padding:16px 18px;display:flex;align-items:center;justify-content:space-between;gap:10px;transition:all 0.35s cubic-bezier(0.22,1,0.36,1)}
+.split-item.current{
+  border-color:rgba(52,211,153,0.45);
+  background:linear-gradient(135deg,rgba(52,211,153,0.12),rgba(52,211,153,0.04));
+  box-shadow:0 0 0 1px rgba(52,211,153,0.25), 0 8px 30px rgba(52,211,153,0.15);
+  transform:scale(1.02);
+}
+.split-item.settled{opacity:0.6}
+.split-item.retryable{cursor:pointer}
+.split-item.retryable:active{transform:scale(0.98);opacity:0.85}
+.split-info{display:flex;flex-direction:column;gap:3px;min-width:0}
+.split-num{font-size:11px;color:var(--text-dim);text-transform:uppercase;letter-spacing:1.2px;font-weight:600}
+.split-amt{font-size:20px;font-weight:700}
+.split-hint{font-size:10px;color:var(--danger);font-weight:600;margin-top:1px}
+.split-status{font-size:10px;padding:5px 12px;border-radius:20px;font-weight:700;text-transform:uppercase;letter-spacing:0.8px;flex-shrink:0}
+.status-pending{background:rgba(255,255,255,0.07);color:var(--text-dim)}
+.status-paid{background:rgba(52,211,153,0.16);color:var(--accent)}
+.status-failed{background:rgba(248,113,113,0.16);color:var(--danger)}
+.status-current{background:rgba(52,211,153,0.18);color:var(--accent);animation:blink 1.6s ease-in-out infinite}
+@keyframes blink{0%,100%{opacity:1}50%{opacity:0.45}}
 
-  .error-text {
-    color: var(--danger);
-    font-size: 0.8rem;
-    font-weight: 600;
-    min-height: 1.1em;
-    margin-top: -6px;
-    margin-bottom: 8px;
-  }
+.progress-bar{height:8px;background:rgba(255,255,255,0.07);border-radius:5px;margin:14px 0 4px;overflow:hidden;box-shadow:inset 0 1px 2px rgba(0,0,0,0.3)}
+.progress-fill{height:100%;width:0%;background:linear-gradient(90deg,#34D399,#7dd3fc);border-radius:5px;transition:width 0.6s cubic-bezier(0.22,1,0.36,1);box-shadow:0 0 12px var(--accent-glow)}
+.progress-text{display:flex;justify-content:space-between;font-size:13px;color:var(--text-dim);margin-bottom:2px}
+.progress-text b{color:var(--text)}
 
-  /* Done screen */
-  .done-wrap {
-    flex: 1;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    text-align: center;
-    gap: 6px;
-  }
-  .done-badge {
-    width: 74px; height: 74px;
-    border-radius: 50%;
-    background: var(--accent);
-    color: var(--accent-ink);
-    display: flex; align-items: center; justify-content: center;
-    margin-bottom: 10px;
-  }
-  .done-badge svg { width: 34px; height: 34px; }
-  .done-stats {
-    display: flex;
-    gap: 22px;
-    margin-top: 22px;
-  }
-  .done-stat strong { display: block; font-size: 1.3rem; font-weight: 800; }
-  .done-stat span { font-size: 0.72rem; color: var(--muted); font-weight: 600; }
+/* ---------- verify last payment (now above the list, always reachable) ---------- */
+.verify-card{
+  border:1px dashed rgba(52,211,153,0.4);
+  background:linear-gradient(135deg,rgba(52,211,153,0.08),rgba(255,255,255,0.04));
+}
+.verify-head{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:8px}
+.verify-head h2{font-size:13px;text-transform:uppercase;letter-spacing:1px;color:var(--text-dim);margin:0}
+.verify-chip{
+  font-size:11px;font-weight:700;color:var(--accent);padding:4px 10px;border-radius:12px;
+  background:rgba(52,211,153,0.14);border:1px solid rgba(52,211,153,0.3);flex-shrink:0;
+}
+.verify-status{
+  margin-top:12px;padding:14px 16px;border-radius:14px;font-size:13px;line-height:1.5;
+  background:rgba(0,0,0,0.25);border:1px solid var(--glass-border);display:none;
+}
+.verify-status.show{display:block;animation:fadeIn 0.3s ease}
+.verify-status.ok{border-color:rgba(52,211,153,0.45);color:var(--accent)}
+.verify-status.bad{border-color:rgba(248,113,113,0.4);color:var(--danger)}
+.verify-status.busy{color:var(--text-dim)}
+.spinner{
+  display:inline-block;width:14px;height:14px;border-radius:50%;
+  border:2px solid rgba(255,255,255,0.2);border-top-color:var(--accent);
+  animation:spin 0.8s linear infinite;vertical-align:-2px;margin-right:8px;
+}
+@keyframes spin{to{transform:rotate(360deg)}}
+.verify-btns{display:flex;gap:10px;margin-top:12px}
+.receipt-thumb{
+  width:100%;max-height:180px;object-fit:contain;border-radius:14px;margin-top:12px;
+  border:1px solid var(--glass-border);background:rgba(0,0,0,0.3);
+}
+.badge-verified{
+  display:inline-flex;align-items:center;gap:8px;padding:10px 18px;border-radius:20px;
+  background:rgba(52,211,153,0.14);border:1px solid rgba(52,211,153,0.4);
+  color:var(--accent);font-size:13px;font-weight:700;margin:0 auto;
+  box-shadow:0 0 24px rgba(52,211,153,0.15);
+}
 
-  /* History */
-  .history-item {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    padding: 13px 2px;
-    border-bottom: 1px solid var(--line);
-  }
-  .history-item:last-child { border-bottom: none; }
-  .history-main strong { display: block; font-size: 0.92rem; font-weight: 700; }
-  .history-main span { font-size: 0.74rem; color: var(--muted); }
-  .history-amount { font-weight: 800; font-variant-numeric: tabular-nums; }
-  .empty-state {
-    text-align: center;
-    color: var(--muted);
-    font-size: 0.88rem;
-    padding: 40px 10px;
-  }
+/* ---------- modal ---------- */
+.modal-overlay{
+  position:fixed;inset:0;background:rgba(4,8,6,0.55);
+  backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);
+  z-index:200;display:none;align-items:center;justify-content:center;padding:24px;
+}
+.modal-overlay.active{display:flex;animation:fadeIn 0.25s ease}
+@keyframes fadeIn{from{opacity:0}to{opacity:1}}
+.modal{padding:30px 24px;max-width:370px;width:100%;text-align:center;animation:modalIn 0.4s cubic-bezier(0.34,1.4,0.64,1)}
+@keyframes modalIn{from{opacity:0;transform:scale(0.85) translateY(20px)}to{opacity:1;transform:scale(1) translateY(0)}}
+.modal .modal-icon{
+  width:64px;height:64px;margin:0 auto 16px;border-radius:50%;
+  display:flex;align-items:center;justify-content:center;
+  background:linear-gradient(135deg,rgba(52,211,153,0.25),rgba(125,211,252,0.15));
+  border:1px solid rgba(52,211,153,0.35);
+  box-shadow:0 0 30px var(--accent-glow);
+}
+.modal h3{font-size:20px;font-weight:700;margin-bottom:8px}
+.modal .modal-amt{font-size:32px;font-weight:700;color:var(--accent);margin:6px 0 4px;text-shadow:0 0 24px var(--accent-glow)}
+.modal p{font-size:13px;color:var(--text-dim);margin-bottom:22px;line-height:1.55}
+.modal-btns{display:flex;flex-direction:column;gap:10px}
 
-  .sr-only {
-    position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
-    overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; border: 0;
-  }
+/* ---------- misc ---------- */
+.summary-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin:16px 0}
+.summary-item{padding:18px 14px;text-align:center}
+.summary-item .val{font-size:24px;font-weight:700;color:var(--accent)}
+.summary-item .lbl{font-size:10px;color:var(--text-dim);text-transform:uppercase;letter-spacing:1.2px;margin-top:5px;font-weight:600}
 
-  .toast {
-    position: fixed;
-    bottom: 24px;
-    left: 50%;
-    transform: translateX(-50%) translateY(20px);
-    background: var(--ink);
-    color: var(--bg);
-    padding: 11px 18px;
-    border-radius: 999px;
-    font-size: 0.85rem;
-    font-weight: 700;
-    opacity: 0;
-    pointer-events: none;
-    transition: opacity .25s ease, transform .25s ease;
-    z-index: 50;
-    max-width: 88%;
-    text-align: center;
-  }
-  .toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+.history-item{padding:16px 18px;margin-bottom:10px}
+.history-item .h-top{display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;gap:8px}
+.history-item .h-merchant{font-weight:600;font-size:14px;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.history-item .h-date{font-size:11px;color:var(--text-dim);flex-shrink:0}
+.history-item .h-bottom{display:flex;justify-content:space-between;font-size:12px;color:var(--text-dim)}
+.history-item .h-bottom b{color:var(--text)}
+.h-verified{color:var(--accent)!important;font-weight:600}
+
+.merchant-badge{
+  display:inline-flex;align-items:center;gap:8px;padding:8px 16px;margin:0 auto 14px;
+  background:rgba(52,211,153,0.1);border:1px solid rgba(52,211,153,0.25);
+  border-radius:24px;font-size:13px;color:var(--accent);font-weight:600;
+  backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);
+  max-width:100%;
+}
+.merchant-badge span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.merchant-badge button{
+  background:rgba(52,211,153,0.12);border:1px solid rgba(52,211,153,0.3);border-radius:10px;
+  color:var(--accent);cursor:pointer;font-family:inherit;font-size:11px;font-weight:700;
+  padding:4px 10px;flex-shrink:0;
+}
+
+.back-btn{
+  background:none;border:none;color:var(--text-dim);font-size:14px;cursor:pointer;
+  display:inline-flex;align-items:center;gap:6px;padding:8px 0;font-family:inherit;margin-bottom:10px;
+  align-self:flex-start;transition:color 0.2s;
+}
+.back-btn:hover{color:var(--text)}
+
+.tabs{display:flex;gap:4px;padding:4px;margin-top:14px;border-radius:16px}
+.tab{
+  flex:1;padding:10px;text-align:center;border-radius:12px;font-size:13px;font-weight:600;
+  cursor:pointer;color:var(--text-dim);transition:all 0.3s;border:none;background:none;font-family:inherit;
+}
+.tab.active{background:rgba(255,255,255,0.12);color:var(--text);box-shadow:inset 0 1px 0 rgba(255,255,255,0.15)}
+
+.empty-state{text-align:center;padding:44px 20px;color:var(--text-dim);font-size:14px}
+
+#qr-reader{width:100%;border-radius:18px;overflow:hidden;margin:14px 0;border:none!important}
+#qr-reader video{border-radius:18px}
+#qr-reader__scan_region{border-radius:18px;overflow:hidden}
+#qr-reader__dashboard{padding:10px!important;background:transparent!important}
+#qr-reader__dashboard button{
+  background:var(--glass-bg-2)!important;color:var(--text)!important;border:1px solid var(--glass-border)!important;
+  border-radius:12px!important;padding:9px 15px!important;font-family:inherit!important;cursor:pointer!important;margin:4px!important;
+}
+#qr-reader__dashboard input[type=file]{display:none}
+#qr-reader img[alt="Info icon"]{display:none}
+#qr-reader__status_span,#qr-reader__header_message{color:var(--text-dim)!important;font-size:12px!important}
+#qr-reader a{color:var(--accent)!important}
+#qr-reader__camera_selection{background:rgba(255,255,255,0.06)!important;color:var(--text)!important;border:1px solid var(--glass-border)!important;border-radius:10px!important;padding:8px!important;font-family:inherit!important}
+
+.toast{
+  position:fixed;top:20px;left:50%;transform:translateX(-50%) translateY(-120px);
+  z-index:300;padding:13px 22px;border-radius:18px;font-size:13px;font-weight:600;
+  background:rgba(20,32,27,0.8);border:1px solid var(--glass-border);
+  backdrop-filter:blur(24px);-webkit-backdrop-filter:blur(24px);
+  box-shadow:var(--glass-shadow);transition:transform 0.45s cubic-bezier(0.34,1.3,0.64,1);
+  max-width:88vw;text-align:center;
+}
+.toast.show{transform:translateX(-50%) translateY(0)}
+.toast.error{border-color:rgba(248,113,113,0.4);color:var(--danger)}
+.toast.ok{border-color:rgba(52,211,153,0.4);color:var(--accent)}
+
+@media(max-width:440px){
+  .screen{padding:16px}
+  .screen.pay-mode{padding-bottom:170px}
+  .card{padding:18px}
+  .amount-display{font-size:44px}
+}
 </style>
 </head>
 <body>
-<div class="shell">
-  <div class="topbar">
-    <div class="wordmark">Split<span>r</span></div>
-    <button class="icon-btn" id="themeToggle" aria-label="Toggle dark mode" title="Toggle theme">
-      <svg id="themeIcon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"></circle><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"></path></svg>
-    </button>
-  </div>
 
-  <nav class="stepper" aria-label="Progress">
-    <div class="step active" data-step="scan"><div class="rail"></div><div class="dot"></div><label>Start</label></div>
-    <div class="step" data-step="amount"><div class="rail"></div><div class="dot"></div><label>Amount</label></div>
-    <div class="step" data-step="split"><div class="rail"></div><div class="dot"></div><label>Split</label></div>
-    <div class="step" data-step="pay"><div class="rail"></div><div class="dot"></div><label>Pay</label></div>
-    <div class="step" data-step="done"><div class="rail"></div><div class="dot"></div><label>Done</label></div>
-  </nav>
-
-  <main>
-
-    <!-- SCREEN 0: CHOOSE DESTINATION -->
-    <section class="screen active" id="screen-choose">
-      <h1 class="title">Who are you paying?</h1>
-      <p class="sub">Pick your saved shop, or scan a different merchant's QR for a one-off split.</p>
-
-      <button class="option-card primary" id="payMyShopBtn">
-        <div class="opt-icon" id="shopInitial">S</div>
-        <div class="opt-text">
-          <div class="opt-title" id="shopOptTitle">Pay My Shop</div>
-          <div class="opt-sub" id="shopOptSub">—</div>
-        </div>
-        <svg class="opt-chevron" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"></polyline></svg>
-      </button>
-
-      <button class="option-card secondary" id="scanAnotherBtn">
-        <div class="opt-icon">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M4 7V5a1 1 0 011-1h2M20 7V5a1 1 0 00-1-1h-2M4 17v2a1 1 0 001 1h2M20 17v2a1 1 0 01-1 1h-2"/><rect x="7" y="7" width="4" height="4" rx="0.5"/><rect x="13" y="7" width="4" height="4" rx="0.5"/><rect x="7" y="13" width="4" height="4" rx="0.5"/></svg>
-        </div>
-        <div class="opt-text">
-          <div class="opt-title">Scan Another QR</div>
-          <div class="opt-sub">Camera, image upload, or type a UPI ID</div>
-        </div>
-        <svg class="opt-chevron" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"></polyline></svg>
-      </button>
-
-      <div class="btn-row">
-        <button class="text-btn" id="chooseHistoryBtn">View history</button>
-      </div>
-    </section>
-
-    <!-- SCREEN 1: SCAN -->
-    <section class="screen" id="screen-scan">
-      <h1 class="title">Scan the merchant's QR</h1>
-      <p class="sub">Works with UPI deep-link QRs and BharatQR/EMVCo-style bank &amp; merchant QRs. Nothing you scan ever leaves this device.</p>
-
-      <div class="scan-frame" id="scanFrame">
-        <div class="scan-idle" id="scanIdle">
-          <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M4 7V5a1 1 0 011-1h2M20 7V5a1 1 0 00-1-1h-2M4 17v2a1 1 0 001 1h2M20 17v2a1 1 0 01-1 1h-2"/><rect x="7" y="7" width="4" height="4" rx="0.5"/><rect x="13" y="7" width="4" height="4" rx="0.5"/><rect x="7" y="13" width="4" height="4" rx="0.5"/></svg>
-          <span>Camera is off</span>
-        </div>
-        <video id="qrVideo" playsinline muted style="display:none;"></video>
-        <div class="reticle" id="reticle" style="display:none;"></div>
-        <div class="scan-hint" id="scanHint" style="display:none;">Align QR code within the frame</div>
-      </div>
-
-      <div id="scanError" class="error-text" style="margin-top:10px;"></div>
-
-      <button class="primary-btn" id="startScanBtn" style="margin-top:16px;">Start camera</button>
-      <button class="secondary-btn" id="uploadQrBtn" style="margin-top:10px;">Upload QR image</button>
-      <input type="file" id="qrFileInput" accept="image/*" style="display:none;">
-      <div id="qrFileRegion" style="display:none;"></div>
-      <div id="verifyQrRegion" style="display:none;"></div>
-
-      <div class="divider-row">or enter manually</div>
-
-      <div class="field">
-        <label for="manualVpa">Merchant UPI ID</label>
-        <input type="text" id="manualVpa" placeholder="merchant@bankupi" autocomplete="off" autocapitalize="off">
-      </div>
-      <div class="field">
-        <label for="manualName">Merchant name (optional)</label>
-        <input type="text" id="manualName" placeholder="e.g. Sharma General Store" autocomplete="off">
-      </div>
-      <button class="secondary-btn" id="useManualBtn">Use this UPI ID</button>
-      <button class="text-btn" id="backToChooseBtn">Back</button>
-    </section>
-
-    <!-- SCREEN 2: AMOUNT -->
-    <section class="screen" id="screen-amount">
-      <h1 class="title">Enter the bill amount</h1>
-      <p class="sub">We'll split this into payments that fit your per-transaction limit.</p>
-
-      <div class="merchant-card">
-        <div class="merchant-avatar" id="merchantInitial">?</div>
-        <div>
-          <div class="merchant-name" id="merchantNameDisplay">Merchant</div>
-          <div class="merchant-vpa" id="merchantVpaDisplay">—</div>
-        </div>
-        <button class="merchant-edit" id="changeMerchantBtn">Change</button>
-      </div>
-
-      <div class="amount-input-wrap">
-        <span class="rupee-sign">₹</span>
-        <input type="text" inputmode="decimal" id="billAmount" placeholder="0" autocomplete="off">
-      </div>
-      <div class="error-text" id="amountError" style="text-align:center;"></div>
-
-      <div class="limit-row">
-        <div class="limit-row-text">
-          <strong>Per-payment limit</strong>
-          <span>Each split will be ₹<span id="limitLabel">1,999</span> or less</span>
-        </div>
-        <input type="text" inputmode="numeric" class="limit-edit-input" id="limitInput" value="1999">
-      </div>
-
-      <p class="preview-line" id="previewLine">&nbsp;</p>
-
-      <div class="btn-row">
-        <button class="primary-btn" id="toSplitBtn" disabled>Split bill</button>
-        <button class="text-btn" id="backToScanBtn">Back</button>
-      </div>
-    </section>
-
-    <!-- SCREEN 3: SPLIT / PAY -->
-    <section class="screen" id="screen-pay">
-      <h1 class="title">Pay in parts</h1>
-      <p class="sub" id="paySub">Tap each payment to open it in your UPI app, then mark it once it's done.</p>
-
-      <div class="summary-hero">
-        <div class="amount" id="totalAmountDisplay">₹0</div>
-        <div class="meta" id="paySummaryMeta">0 of 0 paid</div>
-        <div class="progress-track"><div class="progress-fill" id="progressFill"></div></div>
-      </div>
-
-      <div class="split-list" id="splitList"></div>
-
-      <div class="verify-card" id="verifyCard" hidden>
-        <div class="verify-card-head"><strong>Optional</strong><span>Verify last payment</span></div>
-
-        <div id="verifyIdle">
-          <p class="sub" style="margin:4px 0 12px;">Upload the receipt for the last split (<span id="verifyAmountLabel"></span>) to double-check it went through.</p>
-          <div class="btn-row" style="padding-top:0;">
-            <button class="secondary-btn" id="verifyStartBtn">Verify Last Payment</button>
-          </div>
-        </div>
-
-        <div id="verifyUpload" hidden>
-          <input type="file" id="verifyFileInput" accept="image/*" style="display:none">
-          <p class="sub" style="margin:4px 0 12px;">Processed on this device only — the image is never uploaded anywhere.</p>
-          <div class="btn-row" style="padding-top:0;">
-            <button class="secondary-btn" id="verifyUploadBtn">Upload receipt screenshot</button>
-            <button class="text-btn" id="verifySkipBtn">Skip verification</button>
-          </div>
-        </div>
-
-        <div id="verifyLoading" hidden>
-          <div class="verify-spinner-row"><div class="spinner"></div><span class="sub">Reading receipt on this device…</span></div>
-        </div>
-
-        <div id="verifyResult" hidden></div>
-      </div>
-
-      <div class="btn-row">
-        <button class="primary-btn" id="finishBtn" disabled>Finish</button>
-        <button class="text-btn" id="cancelSessionBtn">Cancel this split</button>
-      </div>
-    </section>
-
-    <!-- SCREEN 4: DONE -->
-    <section class="screen" id="screen-done">
-      <div class="done-wrap">
-        <div class="done-badge">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>
-        </div>
-        <h1 class="title" style="margin-bottom:0;">Split complete</h1>
-        <p class="sub" id="doneSub">All payments recorded.</p>
-        <div class="done-stats">
-          <div class="done-stat"><strong id="doneTotal">₹0</strong><span>Total billed</span></div>
-          <div class="done-stat"><strong id="donePaid">0</strong><span>Marked paid</span></div>
-          <div class="done-stat"><strong id="doneFailed">0</strong><span>Marked failed</span></div>
-        </div>
-        <div class="verified-badge" id="doneVerifiedBadge" hidden>✓ Receipt Verified</div>
-      </div>
-      <div class="btn-row">
-        <button class="primary-btn" id="newSplitBtn">Start a new split</button>
-        <button class="secondary-btn" id="shareDoneBtn">Share</button>
-        <button class="text-btn" id="viewHistoryBtn">View history</button>
-      </div>
-    </section>
-
-    <!-- SCREEN 5: HISTORY -->
-    <section class="screen" id="screen-history">
-      <h1 class="title">History</h1>
-      <p class="sub">Stored only on this device. Clearing your browser data will erase it.</p>
-      <div id="historyList"></div>
-      <div class="btn-row">
-        <button class="secondary-btn" id="clearHistoryBtn">Clear history</button>
-        <button class="text-btn" id="closeHistoryBtn">Close</button>
-      </div>
-    </section>
-
-  </main>
+<div class="bg-orbs">
+  <div class="orb orb-1"></div>
+  <div class="orb orb-2"></div>
+  <div class="orb orb-3"></div>
+  <div class="orb orb-4"></div>
 </div>
 
 <div class="toast" id="toast"></div>
 
-<script src="https://cdn.jsdelivr.net/npm/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
+<div id="app">
+
+  <!-- ================= START ================= -->
+  <div class="screen active" id="screen-start">
+    <div class="header">
+      <h1>Split<span>r</span></h1>
+      <p>Split any UPI bill into smaller payments</p>
+    </div>
+    <div class="stepper">
+      <div class="step-dot active"></div><div class="step-dot"></div><div class="step-dot"></div><div class="step-dot"></div>
+    </div>
+
+    <div class="card glass" style="padding:16px 20px;margin-bottom:14px">
+      <h2 style="font-size:12px;text-transform:uppercase;letter-spacing:1.2px;color:var(--text-dim);margin-bottom:12px">My Shop — pay without scanning</h2>
+      <button class="saved-shop" onclick="paySavedShop()">
+        <div class="shop-avatar">PE</div>
+        <div class="shop-info">
+          <div class="shop-name" id="saved-shop-name">Poonam Electronics</div>
+          <div class="shop-sub" id="saved-shop-upi">paytmqrpmc3i3nuzg@paytm</div>
+        </div>
+        <div class="shop-go">Pay →</div>
+      </button>
+    </div>
+
+    <div class="card glass">
+      <h2>Who else are you paying?</h2>
+      <p>Pick your saved shop above, or scan a different merchant's QR for a one-off split. Each payment is capped at ₹1,999.</p>
+    </div>
+    <button class="btn btn-primary" onclick="openScanScreen()" style="margin-bottom:10px">
+      <svg width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M3 7V5a2 2 0 012-2h2M17 3h2a2 2 0 012 2v2M21 17v2a2 2 0 01-2 2h-2M7 21H5a2 2 0 01-2-2v-2"/><rect x="7" y="7" width="10" height="10" rx="1"/></svg>
+      Scan Another QR
+    </button>
+    <button class="btn btn-secondary" onclick="showScreen('screen-manual')" style="margin-bottom:10px">
+      <svg width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/></svg>
+      Enter UPI ID Manually
+    </button>
+    <button class="btn btn-secondary" onclick="showScreen('screen-history')">
+      <svg width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+      View History
+    </button>
+  </div>
+
+  <!-- ================= SCAN ================= -->
+  <div class="screen" id="screen-scan">
+    <button class="back-btn" onclick="stopScanner();showScreen('screen-start')">
+      <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M15 19l-7-7 7-7"/></svg>Back
+    </button>
+    <div class="card glass">
+      <h2>Scan the merchant's QR</h2>
+      <p>Works with UPI deep-link QRs and BharatQR/EMVCo-style codes. Nothing you scan ever leaves this device.</p>
+    </div>
+    <div id="qr-reader" class="glass"></div>
+    <div class="tabs glass">
+      <button class="tab active" id="tab-camera" onclick="switchScanTab('camera')">Camera</button>
+      <button class="tab" id="tab-upload" onclick="switchScanTab('upload')">Upload Image</button>
+    </div>
+    <input type="file" id="qr-file-input" accept="image/*" style="display:none" onchange="handleFileScan(event)">
+    <button class="btn btn-secondary" onclick="stopScanner();showScreen('screen-manual')" style="margin-top:16px">
+      Enter UPI ID manually instead
+    </button>
+  </div>
+
+  <!-- ================= MANUAL ================= -->
+  <div class="screen" id="screen-manual">
+    <button class="back-btn" onclick="showScreen('screen-start')">
+      <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M15 19l-7-7 7-7"/></svg>Back
+    </button>
+    <div class="card glass">
+      <h2>Enter merchant details</h2>
+      <p>Type the UPI ID shown on the merchant's QR stand or receipt.</p>
+    </div>
+    <div class="input-group">
+      <label>Merchant UPI ID</label>
+      <input type="text" class="glass-input" id="manual-upi" placeholder="merchant@upi" autocomplete="off" autocapitalize="none" spellcheck="false">
+    </div>
+    <div class="input-group">
+      <label>Merchant Name (optional)</label>
+      <input type="text" class="glass-input" id="manual-name" placeholder="Shop name" autocomplete="off">
+    </div>
+    <button class="btn btn-primary" onclick="useManualUPI()" style="margin-top:10px">Use this UPI ID</button>
+  </div>
+
+  <!-- ================= AMOUNT ================= -->
+  <div class="screen" id="screen-amount">
+    <button class="back-btn" onclick="showScreen('screen-start')">
+      <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M15 19l-7-7 7-7"/></svg>Back
+    </button>
+    <div class="stepper">
+      <div class="step-dot done"></div><div class="step-dot active"></div><div class="step-dot"></div><div class="step-dot"></div>
+    </div>
+    <div class="merchant-badge" id="merchant-info"></div>
+    <div class="card glass" style="text-align:center">
+      <h2>Enter the bill amount</h2>
+      <p>We'll split it into payments of at most ₹1,999 each.</p>
+      <div class="amount-display">₹<span id="amount-preview">0</span></div>
+    </div>
+    <div class="input-group">
+      <label>Total Bill Amount (₹)</label>
+      <input type="number" class="glass-input" id="bill-amount" placeholder="0.00" step="0.01" min="0.01" inputmode="decimal" oninput="updateAmountPreview()">
+    </div>
+    <div class="input-group">
+      <label>Per-payment Limit (₹) — max 1,999</label>
+      <input type="number" class="glass-input" id="pay-limit" value="1999" step="1" min="1" max="1999" inputmode="decimal" oninput="clampLimit(this);updateLimitInfo()">
+    </div>
+    <p id="limit-info" style="font-size:12px;color:var(--text-dim);margin:0 4px 18px">Each split will be ₹1,999 or less</p>
+    <button class="btn btn-primary" onclick="doSplit()">
+      <svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M8 7h12m0 0l-4-4m4 4l-4 4M16 17H4m0 0l4-4m-4 4l4 4"/></svg>
+      Split Bill
+    </button>
+  </div>
+
+  <!-- ================= PAY ================= -->
+  <div class="screen pay-mode" id="screen-pay">
+    <div class="stepper">
+      <div class="step-dot done"></div><div class="step-dot done"></div><div class="step-dot active"></div><div class="step-dot"></div>
+    </div>
+    <div class="card glass">
+      <h2 style="display:flex;align-items:center;justify-content:space-between">
+        <span>Pay in parts</span>
+        <button class="back-btn" style="margin:0;font-size:12px" onclick="cancelSplit()">Cancel this split</button>
+      </h2>
+      <div class="merchant-badge" id="pay-merchant" style="margin:10px 0 4px"></div>
+      <div class="progress-text" style="margin-top:12px">
+        <span id="paid-count"><b>0</b> of <b>0</b> paid</span>
+        <span id="paid-total">₹0</span>
+      </div>
+      <div class="progress-bar"><div class="progress-fill" id="progress-fill"></div></div>
+      <p style="margin-top:10px">Tap <b style="color:var(--accent)">Pay</b> below to open your UPI app. When you come back, tell us if it went through.</p>
+    </div>
+
+    <!-- VERIFY LAST PAYMENT — moved ABOVE the list so it's always visible & reachable -->
+    <div class="card glass verify-card" id="verify-card" style="display:none">
+      <div class="verify-head">
+        <h2>Optional — Verify last payment</h2>
+        <span class="verify-chip" id="verify-amt"></span>
+      </div>
+      <p>Upload the receipt screenshot to double-check it went through. <b>Processed on this device only — the image is never uploaded anywhere.</b></p>
+      <input type="file" id="receipt-input" accept="image/*" style="display:none" onchange="handleReceipt(event)">
+      <div class="verify-btns">
+        <button class="btn btn-secondary btn-sm" id="btn-upload-receipt" onclick="document.getElementById('receipt-input').click()">
+          <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M4 16v2a2 2 0 002 2h12a2 2 0 002-2v-2M12 4v12m0-12L7 9m5-5l5 5"/></svg>
+          Upload receipt
+        </button>
+        <button class="btn btn-secondary btn-sm" onclick="skipVerification()">Skip</button>
+      </div>
+      <img class="receipt-thumb" id="receipt-thumb" style="display:none" alt="Receipt preview">
+      <div class="verify-status" id="verify-status"></div>
+      <div class="verify-btns" id="verify-actions" style="display:none">
+        <button class="btn btn-secondary btn-sm" onclick="resetVerification()">Try another screenshot</button>
+      </div>
+      <button class="btn btn-primary" id="btn-finish-split" style="display:none;margin-top:12px" onclick="finishSplit()">
+        Finish — see summary
+        <svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24"><path d="M5 12h14m0 0l-6-6m6 6l-6 6"/></svg>
+      </button>
+    </div>
+
+    <div class="split-list" id="split-list"></div>
+  </div>
+
+  <!-- ================= DONE ================= -->
+  <div class="screen" id="screen-done">
+    <div class="stepper">
+      <div class="step-dot done"></div><div class="step-dot done"></div><div class="step-dot done"></div><div class="step-dot active"></div>
+    </div>
+    <div class="card glass" style="text-align:center;padding:38px 24px">
+      <div style="width:76px;height:76px;margin:0 auto 18px;border-radius:50%;display:flex;align-items:center;justify-content:center;background:linear-gradient(135deg,rgba(52,211,153,0.25),rgba(125,211,252,0.12));border:1px solid rgba(52,211,153,0.4);box-shadow:0 0 40px var(--accent-glow)">
+        <svg width="38" height="38" fill="none" stroke="var(--accent)" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24"><path d="M20 6L9 17l-5-5"/></svg>
+      </div>
+      <h2 style="font-size:23px;margin-bottom:6px">Split complete!</h2>
+      <p>All payments recorded.</p>
+      <div id="receipt-verified-badge" style="display:none;margin-top:16px">
+        <span class="badge-verified">
+          <svg width="15" height="15" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24"><path d="M9 12l2 2 4-4"/><circle cx="12" cy="12" r="10"/></svg>
+          Receipt Verified
+        </span>
+      </div>
+    </div>
+    <div class="summary-grid">
+      <div class="summary-item glass"><div class="val" id="sum-total">₹0</div><div class="lbl">Total Billed</div></div>
+      <div class="summary-item glass"><div class="val" id="sum-paid">0</div><div class="lbl">Marked Paid</div></div>
+      <div class="summary-item glass"><div class="val" id="sum-failed">0</div><div class="lbl">Marked Failed</div></div>
+      <div class="summary-item glass"><div class="val" id="sum-splits">0</div><div class="lbl">Total Splits</div></div>
+    </div>
+    <button class="btn btn-primary" onclick="resetApp()" style="margin-top:6px">Start a new split</button>
+    <button class="btn btn-secondary" onclick="shareSummary()" style="margin-top:10px">
+      <svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24"><path d="M4 12v8a2 2 0 002 2h12a2 2 0 002-2v-8M16 6l-4-4-4 4M12 2v13"/></svg>
+      Share
+    </button>
+    <button class="btn btn-secondary" onclick="showScreen('screen-history')" style="margin-top:10px">View history</button>
+  </div>
+
+  <!-- ================= HISTORY ================= -->
+  <div class="screen" id="screen-history">
+    <button class="back-btn" onclick="showScreen('screen-start')">
+      <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M15 19l-7-7 7-7"/></svg>Back
+    </button>
+    <div class="card glass">
+      <h2>History</h2>
+      <p>Stored only on this device. Clearing your browser data will erase it.</p>
+    </div>
+    <div id="history-list" style="padding-bottom:20px"></div>
+    <button class="btn btn-danger" onclick="clearHistory()">Clear history</button>
+    <button class="btn btn-secondary" onclick="showScreen('screen-start')" style="margin-top:10px">Close</button>
+  </div>
+
+</div>
+
+<!-- ================= BIG BOTTOM PAY BUTTON ================= -->
+<div class="pay-dock" id="pay-dock">
+  <button class="btn-pay" id="btn-pay" onclick="initiatePayment()">
+    <svg width="26" height="26" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24" style="flex-shrink:0"><path d="M12 2v20M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6"/></svg>
+    <span class="pay-main">
+      <span class="pay-sub" id="pay-btn-label">PAY PART 1</span>
+      <span class="pay-amt" id="pay-btn-amount">₹0</span>
+    </span>
+  </button>
+</div>
+
+<!-- ================= CONFIRM MODAL ================= -->
+<div class="modal-overlay" id="modal-confirm">
+  <div class="modal glass-strong">
+    <div class="modal-icon">
+      <svg width="30" height="30" fill="none" stroke="var(--accent)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24"><path d="M9 12l2 2 4-4"/><circle cx="12" cy="12" r="10"/></svg>
+    </div>
+    <h3>Was the payment successful?</h3>
+    <div class="modal-amt" id="modal-amt">₹0</div>
+    <p id="modal-sub">Confirm after returning from your UPI app. We can't verify this automatically.</p>
+    <div class="modal-btns">
+      <button class="btn btn-primary" onclick="confirmPayment(true)">
+        <svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24"><path d="M20 6L9 17l-5-5"/></svg>
+        Yes, Payment Successful
+      </button>
+      <button class="btn btn-danger" onclick="confirmPayment(false)">
+        <svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24"><path d="M18 6L6 18M6 6l12 12"/></svg>
+        No, It Failed
+      </button>
+    </div>
+  </div>
+</div>
+
 <script>
-(function () {
-  "use strict";
+/* ============================================================
+   Saved shop — Poonam Electronics (real Paytm QR VPA)
+============================================================ */
+const SAVED_SHOP = {
+  name: 'Poonam Electronics',
+  upi: 'paytmqrpmc3i3nuzg@paytm'
+};
+const MAX_LIMIT = 1999;          // per-payment limit hard cap (₹1,999)
 
-  /* ---------- Constants & state ---------- */
-  var DEFAULT_LIMIT = 1999;
-  var MAX_LIMIT = 1999;
-  var STORAGE_KEY = "splitr_history_v1";
-  var THEME_KEY = "splitr_theme";
+/* ============================================================
+   State
+============================================================ */
+let currentUPI = '';
+let currentMerchantName = '';
+let splits = [];
+let currentSplitIndex = 0;
+let html5QrCode = null;
+let scannerRunning = false;
+let awaitingConfirmation = false;
+let handoffDone = false;
+let wentHidden = false;          // did the page actually lose visibility (UPI app opened)?
+let receiptVerified = false;
+let lastReceiptAmount = null;
+let verifying = false;
 
-  var SHOP_VPA = "paytmqrpmc3i3nuzg@paytm";
-  var SHOP_NAME = "Poonam Electronics";
+const fmt = n => '₹' + Number(n).toLocaleString('en-IN', {maximumFractionDigits:2, minimumFractionDigits: (Number(n)%1===0?0:2)});
+function escapeHtml(s) {
+  return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+function buzz(ms) { try { navigator.vibrate && navigator.vibrate(ms); } catch(e) {} }
 
-  var state = {
-    vpa: "",
-    name: "",
-    billAmount: 0,
-    limit: DEFAULT_LIMIT,
-    splits: [],
-    qrScanner: null,
-    scanning: false,
-    verification: null
-  };
+/* ============================================================
+   Navigation
+============================================================ */
+function showScreen(id) {
+  document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+  document.getElementById(id).classList.add('active');
+  window.scrollTo(0, 0);
 
-  /* ---------- Utilities ---------- */
-  function $(id) { return document.getElementById(id); }
+  const dock = document.getElementById('pay-dock');
+  const shouldShowPay = (id === 'screen-pay') && splits.some(s => s.status === 'pending');
+  if (shouldShowPay) { dock.classList.add('visible'); updatePayButton(); }
+  else dock.classList.remove('visible');
 
-  function formatINR(amount) {
-    var isNeg = amount < 0;
-    amount = Math.abs(amount);
-    var fixed = amount.toFixed(2);
-    var parts = fixed.split(".");
-    var intPart = parts[0];
-    var dec = parts[1];
-    var lastThree = intPart.length > 3 ? intPart.slice(-3) : intPart;
-    var rest = intPart.length > 3 ? intPart.slice(0, -3) : "";
-    if (rest) {
-      lastThree = "," + lastThree;
-      rest = rest.replace(/\B(?=(\d{2})+(?!\d))/g, ",");
-    }
-    var grouped = rest + lastThree;
-    var out = "₹" + grouped + (dec === "00" ? "" : "." + dec);
-    return (isNeg ? "-" : "") + out;
+  if (id === 'screen-history') renderHistory();
+  if (id !== 'screen-scan' && scannerRunning) stopScanner();
+}
+
+function toast(msg, type) {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.className = 'toast show ' + (type || '');
+  clearTimeout(t._tm);
+  t._tm = setTimeout(() => t.classList.remove('show'), 3400);
+}
+
+/* ============================================================
+   Saved shop shortcut
+============================================================ */
+function paySavedShop() {
+  currentUPI = SAVED_SHOP.upi;
+  currentMerchantName = SAVED_SHOP.name;
+  proceedToAmount();
+}
+
+/* ============================================================
+   Amount screen (limit hard-capped at ₹1,999)
+============================================================ */
+function clampLimit(el) {
+  let v = parseFloat(el.value);
+  if (!isNaN(v) && v > MAX_LIMIT) {
+    el.value = MAX_LIMIT;
+    toast('Per-payment limit is capped at ₹1,999.', 'error');
   }
+}
+function updateAmountPreview() {
+  const v = document.getElementById('bill-amount').value;
+  document.getElementById('amount-preview').textContent =
+    v && parseFloat(v) > 0 ? parseFloat(v).toLocaleString('en-IN') : '0';
+}
+function updateLimitInfo() {
+  const l = parseFloat(document.getElementById('pay-limit').value);
+  document.getElementById('limit-info').textContent =
+    l > 0 ? `Each split will be ₹${Math.min(l, MAX_LIMIT).toLocaleString('en-IN')} or less (max allowed: ₹1,999)` : 'Enter a valid limit';
+}
+function proceedToAmount() {
+  document.getElementById('merchant-info').innerHTML =
+    `<svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M20 6L9 17l-5-5"/></svg><span>${escapeHtml(currentMerchantName)}</span> <button onclick="showScreen('screen-start')">Change</button>`;
+  const limEl = document.getElementById('pay-limit');
+  if (!limEl.value || parseFloat(limEl.value) > MAX_LIMIT) limEl.value = MAX_LIMIT;
+  updateLimitInfo();
+  showScreen('screen-amount');
+}
 
-  function toPaise(rupees) { return Math.round(rupees * 100); }
-  function toRupees(paise) { return paise / 100; }
-
-  function showToast(msg) {
-    var t = $("toast");
-    t.textContent = msg;
-    t.classList.add("show");
-    clearTimeout(showToast._timer);
-    showToast._timer = setTimeout(function () { t.classList.remove("show"); }, 2200);
+/* ============================================================
+   QR scanning (html5-qrcode, fully client-side)
+============================================================ */
+function openScanScreen() {
+  showScreen('screen-scan');
+  document.getElementById('tab-camera').classList.add('active');
+  document.getElementById('tab-upload').classList.remove('active');
+  setTimeout(startScanner, 350);
+}
+async function startScanner() {
+  if (scannerRunning) return;
+  try {
+    if (!html5QrCode) html5QrCode = new Html5Qrcode('qr-reader');
+    await html5QrCode.start(
+      { facingMode: 'environment' },
+      { fps: 10, qrbox: { width: 230, height: 230 } },
+      onQRScanned, () => {}
+    );
+    scannerRunning = true;
+  } catch (err) {
+    toast('Could not start camera. Use upload or manual entry.', 'error');
   }
-
-  /* ---------- Core split algorithm ---------- */
-  function splitBill(totalRupees, limitRupees) {
-    var totalPaise = toPaise(totalRupees);
-    var limitPaise = toPaise(limitRupees);
-    if (!isFinite(totalPaise) || totalPaise <= 0) throw new Error("Enter an amount greater than ₹0");
-    if (!isFinite(limitPaise) || limitPaise <= 0) throw new Error("Limit must be greater than ₹0");
-
-    var parts = [];
-    var remaining = totalPaise;
-    while (remaining > limitPaise) {
-      parts.push(limitPaise);
-      remaining -= limitPaise;
-    }
-    if (remaining > 0) parts.push(remaining);
-
-    var sum = parts.reduce(function (a, b) { return a + b; }, 0);
-    if (sum !== totalPaise) throw new Error("Internal split error: totals do not match");
-    for (var i = 0; i < parts.length; i++) {
-      if (parts[i] > limitPaise) throw new Error("Internal split error: limit exceeded");
-    }
-    return parts.map(toRupees);
+}
+function stopScanner() {
+  if (html5QrCode && scannerRunning) {
+    html5QrCode.stop().then(() => {
+      try { html5QrCode.clear(); } catch(e) {}
+      scannerRunning = false;
+    }).catch(() => { scannerRunning = false; });
   }
-
-  /* ---------- Payment QR parsing ---------- */
-  function parseUpiUriFormat(text) {
-    var m = text.match(/^[a-zA-Z0-9.+-]+:\/\/[^?]*\?(.*)$/);
-    var query = m ? m[1] : (text.indexOf("pa=") !== -1 ? text : null);
-    if (!query) return null;
-    var params = {};
-    query.split("&").forEach(function (pair) {
-      var kv = pair.split("=");
-      if (kv.length < 2) return;
-      var k = decodeURIComponent(kv[0]);
-      var v = decodeURIComponent(kv.slice(1).join("=").replace(/\+/g, " "));
-      params[k] = v;
+}
+function switchScanTab(tab) {
+  const camTab = document.getElementById('tab-camera');
+  const upTab = document.getElementById('tab-upload');
+  if (tab === 'camera') {
+    camTab.classList.add('active'); upTab.classList.remove('active');
+    startScanner();
+  } else {
+    upTab.classList.add('active'); camTab.classList.remove('active');
+    stopScanner();
+    document.getElementById('qr-file-input').click();
+  }
+}
+function handleFileScan(e) {
+  const file = e.target.files[0];
+  if (!file) return;
+  const fileQr = new Html5Qrcode('qr-reader');
+  fileQr.scanFile(file, true)
+    .then(text => { try { fileQr.clear(); } catch(x) {} onQRScanned(text); })
+    .catch(() => {
+      try { fileQr.clear(); } catch(x) {}
+      toast("Couldn't read a QR from that image. Try another, or enter the UPI ID manually.", 'error');
     });
-    if (!params.pa) return null;
-    var amount = params.am ? parseFloat(params.am) : null;
-    return {
-      format: "UPI link",
-      vpa: params.pa,
-      name: params.pn || "",
-      amount: (amount && amount > 0) ? amount : null,
-      currency: params.cu || null,
-      crcValid: null
-    };
-  }
+  e.target.value = '';
+}
+function onQRScanned(decodedText) {
+  stopScanner();
+  parseQRData(decodedText);
+}
 
-  var VPA_PATTERN = /[a-zA-Z0-9.\-_]{2,256}@[a-zA-Z][a-zA-Z0-9]{1,64}/;
-
-  function parseTLV(data) {
-    var result = {};
-    var i = 0;
-    while (i + 4 <= data.length) {
-      var tag = data.substr(i, 2);
-      var len = parseInt(data.substr(i + 2, 2), 10);
-      if (!/^\d{2}$/.test(tag) || isNaN(len)) break;
-      var value = data.substr(i + 4, len);
-      if (value.length !== len) break;
-      result[tag] = value;
-      i += 4 + len;
-    }
-    return result;
-  }
-
-  function findVpaInTemplate(rawValue) {
-    var nested = parseTLV(rawValue);
-    var keys = Object.keys(nested);
-    for (var k = 0; k < keys.length; k++) {
-      if (VPA_PATTERN.test(nested[keys[k]])) return nested[keys[k]].match(VPA_PATTERN)[0];
-    }
-    var m = rawValue.match(VPA_PATTERN);
-    return m ? m[0] : null;
-  }
-
-  function crc16ccitt(str) {
-    var crc = 0xFFFF;
-    for (var i = 0; i < str.length; i++) {
-      crc ^= (str.charCodeAt(i) << 8);
-      for (var j = 0; j < 8; j++) {
-        crc = (crc & 0x8000) ? ((crc << 1) ^ 0x1021) & 0xFFFF : (crc << 1) & 0xFFFF;
-      }
-    }
-    return crc;
-  }
-
-  function parseEmvQr(text) {
-    var clean = text.trim();
-    var root = parseTLV(clean);
-    if (root["00"] !== "01") return null;
-
-    var vpa = null;
-    for (var t = 2; t <= 51; t++) {
-      var tag = (t < 10 ? "0" : "") + t;
-      if (root[tag]) {
-        var found = findVpaInTemplate(root[tag]);
-        if (found) { vpa = found; break; }
-      }
-    }
-    if (!vpa) return null;
-
-    var amount = root["54"] ? parseFloat(root["54"]) : null;
-    var currencyCode = root["53"] || null;
-    var currency = currencyCode === "356" ? "INR" : (currencyCode ? ("ISO " + currencyCode) : null);
-
-    var crcValid = null;
-    if (root["63"] && root["63"].length === 4 && clean.slice(-8, -4) === "6304") {
-      var dataForCrc = clean.slice(0, -4);
-      var computed = crc16ccitt(dataForCrc).toString(16).toUpperCase();
-      while (computed.length < 4) computed = "0" + computed;
-      crcValid = (computed === root["63"].toUpperCase());
-    }
-
-    return {
-      format: "EMVCo/BharatQR",
-      vpa: vpa,
-      name: root["59"] || "",
-      amount: (amount && amount > 0) ? amount : null,
-      currency: currency,
-      crcValid: crcValid
-    };
-  }
-
-  function parsePaymentQr(text) {
-    var trimmed = (text || "").trim();
-    if (!trimmed) return null;
-    return parseUpiUriFormat(trimmed) || parseEmvQr(trimmed);
-  }
-
-  function buildUpiUri(vpa, name, amount, note) {
-    var params = [
-      "pa=" + encodeURIComponent(vpa),
-      "pn=" + encodeURIComponent(name || "Merchant"),
-      "am=" + encodeURIComponent(amount.toFixed(2)),
-      "cu=INR",
-      "tn=" + encodeURIComponent(note || "")
-    ];
-    return "upi://pay?" + params.join("&");
-  }
-
-  /* ---------- Receipt verification ---------- */
-  var TESSERACT_CDN = "https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/tesseract.min.js";
-  var tesseractLoadPromise = null;
-  function loadTesseract() {
-    if (window.Tesseract) return Promise.resolve();
-    if (tesseractLoadPromise) return tesseractLoadPromise;
-    tesseractLoadPromise = new Promise(function (resolve, reject) {
-      var s = document.createElement("script");
-      s.src = TESSERACT_CDN;
-      s.onload = function () { resolve(); };
-      s.onerror = function () { tesseractLoadPromise = null; reject(new Error("couldn't load receipt reader")); };
-      document.head.appendChild(s);
-    });
-    return tesseractLoadPromise;
-  }
-
-  function amountTextVariants(rupees) {
-    var whole = Math.round(rupees * 100) / 100;
-    var plain = (whole % 1 === 0) ? String(whole) : whole.toFixed(2);
-    var grouped = formatINR(whole).replace("₹", "").trim();
-    var variants = [plain, grouped, grouped.replace(/,/g, "")];
-    return variants.filter(function (v, i) { return variants.indexOf(v) === i; });
-  }
-
-  function normalizeForCompare(s) {
-    return (s || "").toLowerCase().replace(/[^a-z0-9]/g, "");
-  }
-
-  function extractVpaCandidates(text) {
-    var compact = text.replace(/\s*@\s*/g, "@");
-    var matches = compact.match(/[a-zA-Z0-9*xX•.\-_]{2,64}@[a-zA-Z]{2,64}\b/g) || [];
-    var emailDomains = ["gmail", "yahoo", "hotmail", "outlook", "icloud", "rediffmail", "protonmail", "live", "aol"];
-    return matches.filter(function (m) {
-      return emailDomains.indexOf(m.split("@")[1].toLowerCase()) === -1;
-    });
-  }
-
-  function vpaMatchesRecipient(candidate) {
-    var candNorm = candidate.toLowerCase();
-    var shopNorm = (state.vpa || "").toLowerCase();
-    if (!shopNorm) return false;
-    if (candNorm === shopNorm) return true;
-
-    var candParts = candNorm.split("@");
-    var shopParts = shopNorm.split("@");
-    if (candParts[1] !== shopParts[1]) return false;
-
-    var candHandle = candParts[0];
-    var shopHandle = shopParts[0];
-    if (candHandle === shopHandle) return true;
-
-    var visibleTail = candHandle.replace(/[*xX•.\-_]/g, "");
-    if (visibleTail.length < 4) return false;
-    return shopHandle.slice(-visibleTail.length) === visibleTail;
-  }
-
-  function extractPayeeName(text) {
-    var lines = text.split(/\r?\n/).map(function (l) { return l.trim(); }).filter(Boolean);
-    var labelRe = /^(payee|receiver)(?:'?s)?\s*name\s*[:\-]?\s*(.*)$/i;
-    for (var i = 0; i < lines.length; i++) {
-      var m = lines[i].match(labelRe);
-      if (!m) continue;
-      var candidate = (m[2] || "").trim() || lines[i + 1] || "";
-      candidate = clean(candidate);
-      if (candidate) return candidate;
-    }
-
-    var inlinePatterns = [
-      /paid\s+(?:successfully\s+)?to\s*[:\-]?\s*([A-Za-z][A-Za-z0-9&.' \-]{1,60})/i,
-      /(?:sent|transferred)\s+to\s*[:\-]?\s*([A-Za-z][A-Za-z0-9&.' \-]{1,60})/i,
-      /merchant(?:\s*name)?\s*[:\-]?\s*([A-Za-z][A-Za-z0-9&.' \-]{1,60})/i,
-      /beneficiary(?:\s*name)?\s*[:\-]?\s*([A-Za-z][A-Za-z0-9&.' \-]{1,60})/i,
-      /\bto\s+([A-Z][A-Za-z0-9&.' \-]{1,60})/
-    ];
-    var flat = text.replace(/[ \t]+/g, " ");
-    for (var j = 0; j < inlinePatterns.length; j++) {
-      var im = flat.match(inlinePatterns[j]);
-      if (!im) continue;
-      var candidate2 = clean(im[1].split(/\r?\n/)[0]);
-      if (candidate2) return candidate2;
-    }
-    return null;
-
-    function clean(s) {
-      var c = s.replace(/\s+(on|via|using|at|rs\.?|inr|₹)\b.*/i, "");
-      c = c.replace(/[^a-zA-Z0-9 &.'-]/g, "").trim();
-      return (c.length >= 2 && !/^\d+$/.test(c)) ? c : null;
-    }
-  }
-
-  function checkRecipient(text, qrParsed) {
-    if (qrParsed && qrParsed.vpa) {
-      return { ok: vpaMatchesRecipient(qrParsed.vpa), found: qrParsed.vpa, fromQr: true };
-    }
-
-    var candidates = extractVpaCandidates(text);
-    if (candidates.length) {
-      var match = null;
-      for (var i = 0; i < candidates.length; i++) {
-        if (vpaMatchesRecipient(candidates[i])) { match = candidates[i]; break; }
-      }
-      return match ? { ok: true, found: match } : { ok: false, found: candidates[0] };
-    }
-
-    var name = extractPayeeName(text);
-    if (name) {
-      var a = normalizeForCompare(name), b = normalizeForCompare(state.name || "");
-      var nameOk = a.length >= 3 && b.length >= 3 && (a.indexOf(b) !== -1 || b.indexOf(a) !== -1);
-      return { ok: nameOk, found: name };
-    }
-
-    return { ok: false, found: null };
-  }
-
-  function checkReceiptText(rawText, expectedAmount, qrParsed) {
-    var text = rawText || "";
-    var lower = text.toLowerCase();
-
-    var amountOk = amountTextVariants(expectedAmount).some(function (v) {
-      return text.indexOf(v) !== -1;
-    });
-    if (!amountOk && qrParsed && qrParsed.amount) {
-      amountOk = amountTextVariants(expectedAmount).indexOf(amountTextVariants(qrParsed.amount)[0]) !== -1 ||
-        Math.abs(qrParsed.amount - expectedAmount) < 0.005;
-    }
-
-    var failWords = /(fail(ed)?|declined|cancel(l)?ed|pending|unsuccessful|insufficient)/i;
-    var successWords = /(success(ful)?|completed|complete|paid|done)/i;
-    var statusOk = successWords.test(lower) && !failWords.test(lower);
-
-    var recipient = checkRecipient(text, qrParsed);
-
-    var refOk =
-      /(utr|ref(erence)?\s*no\.?|txn\s*id|transaction\s*id|order\s*id)/i.test(text) ||
-      /\b\d{9,}\b/.test(text);
-
-    return {
-      amountOk: amountOk,
-      statusOk: statusOk,
-      recipientOk: recipient.ok,
-      recipientFound: recipient.found,
-      recipientFromQr: !!recipient.fromQr,
-      refOk: refOk
-    };
-  }
-
-  function resetVerifyUI() {
-    state.verification = null;
-    if (!$("verifyCard")) return;
-    $("verifyCard").hidden = true;
-    $("verifyIdle").hidden = false;
-    $("verifyUpload").hidden = true;
-    $("verifyLoading").hidden = true;
-    $("verifyResult").hidden = true;
-    $("verifyResult").innerHTML = "";
-    $("verifyFileInput").value = "";
-  }
-
-  function maybeShowVerifyCard() {
-    var last = state.splits[state.splits.length - 1];
-    if (last && last.status === "paid") {
-      if (!state.verification) {
-        $("verifyAmountLabel").textContent = formatINR(last.amount);
-        $("verifyCard").hidden = false;
-      }
-    } else {
-      $("verifyCard").hidden = true;
-    }
-  }
-
-  function renderVerifyResult(allOk, checks, lastAmount) {
-    $("verifyLoading").hidden = true;
-    $("verifyResult").hidden = false;
-    var recipientName = state.name || "the recipient";
-    var recipientLabel;
-    var recipientSource = checks.recipientFromQr ? " (from QR code)" : "";
-    if (!checks.recipientFound) {
-      recipientLabel = "No recipient name or UPI ID found on receipt";
-    } else if (checks.recipientOk) {
-      recipientLabel = "Recipient matches " + recipientName + " (" + checks.recipientFound + ")" + recipientSource;
-    } else {
-      recipientLabel = "Recipient on receipt (" + checks.recipientFound + ") doesn't match " + recipientName + recipientSource;
-    }
-    var rows = [
-      [checks.amountOk, "Amount matches " + formatINR(lastAmount)],
-      [checks.statusOk, "Status shows successful / completed"],
-      [checks.recipientOk, recipientLabel],
-      [checks.refOk, "Transaction / reference ID found"]
-    ];
-    var html = '<div class="verify-checklist">';
-    rows.forEach(function (r) {
-      html += '<div class="verify-check ' + (r[0] ? "ok" : "bad") + '">' + (r[0] ? "✓" : "✕") + " " + r[1] + "</div>";
-    });
-    html += "</div>";
-    if (allOk) {
-      html += '<div class="verify-verdict ok">✓ Last payment receipt verified<br>✓ Full ' + formatINR(state.billAmount) + " split completed</div>";
-    } else {
-      html += '<p class="sub" style="margin-top:10px;">Some details on the receipt didn\'t match. Verification is optional — try another screenshot or continue anyway.</p>' +
-        '<div class="btn-row" style="padding-top:10px;">' +
-        '<button class="secondary-btn" id="verifyRetryBtn">Try another screenshot</button>' +
-        '<button class="text-btn" id="verifyContinueBtn">Continue anyway</button>' +
-        "</div>";
-    }
-    $("verifyResult").innerHTML = html;
-    if (allOk) {
-      showToast("Receipt verified ✓");
-    } else {
-      $("verifyRetryBtn").addEventListener("click", function () {
-        $("verifyResult").hidden = true;
-        $("verifyUpload").hidden = false;
-        $("verifyFileInput").value = "";
-      });
-      $("verifyContinueBtn").addEventListener("click", function () {
-        showToast("Continuing without full verification.");
-      });
-    }
-  }
-
-  function safeClearScanner(scanner) {
+/* --- QR parsing: UPI deep-link + EMVCo/BharatQR TLV --- */
+function parseQRData(raw) {
+  let upiId = '', mName = '', mAmount = '';
+  const lower = raw.toLowerCase();
+  if (lower.startsWith('upi://') || (lower.includes('pa=') && lower.includes('?'))) {
     try {
-      Promise.resolve(scanner && scanner.clear()).catch(function () {});
+      const qIdx = raw.indexOf('?');
+      const params = new URLSearchParams(raw.substring(qIdx + 1));
+      upiId = params.get('pa') || '';
+      mName = params.get('pn') || '';
+      mAmount = params.get('am') || '';
     } catch (e) {}
   }
-
-  function tryDecodeReceiptQr(file) {
-    if (typeof Html5Qrcode === "undefined") return Promise.resolve(null);
-    var qrScanner = new Html5Qrcode("verifyQrRegion", { verbose: false });
-    return qrScanner
-      .scanFile(file, false)
-      .then(function (decodedText) { return parsePaymentQr(decodedText); })
-      .catch(function () { return null; })
-      .then(function (parsed) {
-        safeClearScanner(qrScanner);
-        return parsed;
-      });
+  if (!upiId && raw.startsWith('0002')) {
+    const parsed = parseEMVCo(raw);
+    upiId = parsed.vpa; mName = parsed.name; mAmount = parsed.amount;
+    if (parsed.currency && parsed.currency !== '356') toast('QR currency is not INR — double-check before paying.', 'error');
+    if (parsed.crcBad) toast('QR checksum mismatch — verify the merchant details.', 'error');
   }
-
-  function runReceiptVerification(file) {
-    $("verifyUpload").hidden = true;
-    $("verifyLoading").hidden = false;
-    var last = state.splits[state.splits.length - 1];
-    Promise.all([
-      tryDecodeReceiptQr(file),
-      loadTesseract().then(function () { return Tesseract.recognize(file, "eng"); })
-    ])
-      .then(function (results) {
-        var qrParsed = results[0];
-        var ocrResult = results[1];
-        var text = (ocrResult && ocrResult.data && ocrResult.data.text) || "";
-        var checks = checkReceiptText(text, last.amount, qrParsed);
-        var allOk = checks.amountOk && checks.statusOk && checks.recipientOk && checks.refOk;
-        state.verification = { verified: allOk, checks: checks, skipped: false };
-        renderVerifyResult(allOk, checks, last.amount);
-      })
-      .catch(function (err) {
-        $("verifyLoading").hidden = true;
-        $("verifyResult").hidden = false;
-        $("verifyResult").innerHTML =
-          '<p class="sub">Couldn\'t read that image' + (err && err.message ? " (" + err.message + ")" : "") + '. Try another screenshot or skip.</p>' +
-          '<div class="btn-row" style="padding-top:10px;">' +
-          '<button class="secondary-btn" id="verifyRetryBtn">Try another screenshot</button>' +
-          '<button class="text-btn" id="verifySkipBtn2">Skip verification</button>' +
-          "</div>";
-        $("verifyRetryBtn").addEventListener("click", function () {
-          $("verifyResult").hidden = true;
-          $("verifyUpload").hidden = false;
-          $("verifyFileInput").value = "";
-        });
-        $("verifySkipBtn2").addEventListener("click", function () {
-          state.verification = { skipped: true };
-          $("verifyResult").innerHTML = '<p class="sub">Verification skipped. Your split is still recorded as completed.</p>';
-        });
-      });
+  if (!upiId) { toast("This doesn't look like a supported UPI/payment QR code.", 'error'); return; }
+  if (!/^[a-zA-Z0-9.\-_]{2,}@[a-zA-Z][a-zA-Z0-9.\-_]{1,}$/.test(upiId)) {
+    toast('QR contained an invalid UPI ID. Try manual entry.', 'error'); return;
   }
+  currentUPI = upiId;
+  currentMerchantName = mName || upiId.split('@')[0];
+  if (mAmount && parseFloat(mAmount) > 0) {
+    document.getElementById('bill-amount').value = parseFloat(mAmount).toFixed(2);
+    updateAmountPreview();
+  }
+  toast('Merchant found: ' + currentMerchantName, 'ok');
+  proceedToAmount();
+}
 
-  $("verifyStartBtn").addEventListener("click", function () {
-    $("verifyIdle").hidden = true;
-    $("verifyUpload").hidden = false;
-  });
-  $("verifySkipBtn").addEventListener("click", function () {
-    state.verification = { skipped: true };
-    $("verifyUpload").hidden = true;
-    $("verifyResult").hidden = false;
-    $("verifyResult").innerHTML = '<p class="sub">Verification skipped. Your split is still recorded as completed.</p>';
-  });
-  $("verifyUploadBtn").addEventListener("click", function () { $("verifyFileInput").click(); });
-  $("verifyFileInput").addEventListener("change", function (e) {
-    var file = e.target.files && e.target.files[0];
-    if (!file) return;
-    runReceiptVerification(file);
-  });
-
-  /* ---------- Share ---------- */
-  function buildShareText() {
-    var paid = state.splits.filter(function (s) { return s.status === "paid"; }).length;
-    var total = state.splits.length;
-    var lines = [
-      "✓ Payment completed",
-      formatINR(state.billAmount) + " paid to " + (state.name || SHOP_NAME) + " in " + total + " UPI payment" + (total > 1 ? "s" : "") + " (" + paid + "/" + total + " confirmed)."
-    ];
-    if (state.verification && state.verification.verified) {
-      lines.push("✓ Receipt Verified for the last payment");
+function parseEMVCo(data) {
+  const out = { vpa:'', name:'', amount:'', currency:'', crcBad:false };
+  const walk = (s) => {
+    let i = 0; const items = [];
+    while (i + 4 <= s.length) {
+      const tag = s.substring(i, i + 2);
+      const len = parseInt(s.substring(i + 2, i + 4), 10);
+      if (isNaN(len) || i + 4 + len > s.length) break;
+      items.push({ tag, val: s.substring(i + 4, i + 4 + len) });
+      i += 4 + len;
     }
-    return lines.join("\n");
-  }
-
-  function shareCompletion() {
-    var text = buildShareText();
-    if (navigator.share) {
-      navigator.share({ title: "Payment completed", text: text }).catch(function () {});
-    } else if (navigator.clipboard && navigator.clipboard.writeText) {
-      navigator.clipboard.writeText(text).then(function () {
-        showToast("Copied to clipboard — sharing isn't supported on this browser.");
-      }).catch(function () {
-        showToast("Couldn't share or copy on this browser.");
-      });
-    } else {
-      showToast("Sharing isn't supported on this browser.");
+    return items;
+  };
+  const items = walk(data);
+  const vpaRe = /^[a-zA-Z0-9.\-_]{2,}@[a-zA-Z][a-zA-Z0-9.\-_]{1,}$/;
+  for (const it of items) {
+    if (it.tag === '59') out.name = it.val;
+    else if (it.tag === '54') out.amount = it.val;
+    else if (it.tag === '53') out.currency = it.val;
+    else if (it.tag === '63') {
+      try { const body = data.slice(0, -4); if (crc16(body) !== it.val.toUpperCase()) out.crcBad = true; } catch(e) {}
+    }
+    else if (parseInt(it.tag, 10) >= 2 && parseInt(it.tag, 10) <= 51) {
+      if (vpaRe.test(it.val)) { out.vpa = it.val; }
+      else { for (const sub of walk(it.val)) { if (vpaRe.test(sub.val)) { out.vpa = sub.val; break; } } }
     }
   }
-  $("shareDoneBtn").addEventListener("click", shareCompletion);
-
-  /* ---------- Screen / step navigation ---------- */
-  function showScreen(name) {
-    document.querySelectorAll(".screen").forEach(function (s) { s.classList.remove("active"); });
-    $("screen-" + name).classList.add("active");
-    updateStepper(name);
-    if (name !== "scan") stopScanner();
+  if (!out.vpa) {
+    const m = data.match(/[a-zA-Z0-9.\-_]{2,}@[a-zA-Z][a-zA-Z0-9.\-_]+/);
+    if (m) out.vpa = m[0];
   }
+  return out;
+}
+function crc16(str) {
+  let crc = 0xFFFF;
+  for (let i = 0; i < str.length; i++) {
+    crc ^= str.charCodeAt(i) << 8;
+    for (let j = 0; j < 8; j++) crc = (crc & 0x8000) ? ((crc << 1) ^ 0x1021) & 0xFFFF : (crc << 1) & 0xFFFF;
+  }
+  return crc.toString(16).toUpperCase().padStart(4, '0');
+}
 
-  function updateStepper(activeName) {
-    var mapping = { choose: "scan", scan: "scan", amount: "amount", pay: "split", done: "done", history: null };
-    var current = mapping[activeName];
-    var order = ["scan", "amount", "split", "pay", "done"];
-    var idx = order.indexOf(current === "split" ? (state.anyPaid ? "pay" : "split") : current);
-    document.querySelectorAll(".step").forEach(function (el, i) {
-      el.classList.remove("active", "done");
-      if (current === null) return;
-      if (i < idx) el.classList.add("done");
-      else if (i === idx) el.classList.add("active");
+function useManualUPI() {
+  const upi = document.getElementById('manual-upi').value.trim();
+  const name = document.getElementById('manual-name').value.trim();
+  if (!/^[a-zA-Z0-9.\-_]{2,}@[a-zA-Z][a-zA-Z0-9.\-_]{1,}$/.test(upi)) {
+    toast("That doesn't look like a valid UPI ID (e.g. name@bank).", 'error'); return;
+  }
+  currentUPI = upi;
+  currentMerchantName = name || upi.split('@')[0];
+  document.getElementById('manual-upi').value = '';
+  document.getElementById('manual-name').value = '';
+  proceedToAmount();
+}
+
+/* ============================================================
+   Splitting (integer paise, greedy, invariants asserted)
+============================================================ */
+function splitBill(totalRupees, limitRupees) {
+  const totalPaise = Math.round(totalRupees * 100);
+  const limitPaise = Math.round(limitRupees * 100);
+  if (!(totalPaise > 0) || !(limitPaise > 0)) throw new Error('Invalid amount or limit');
+  const parts = [];
+  let remaining = totalPaise;
+  while (remaining > limitPaise) { parts.push(limitPaise); remaining -= limitPaise; }
+  if (remaining > 0) parts.push(remaining);
+  const sum = parts.reduce((a, b) => a + b, 0);
+  if (sum !== totalPaise) throw new Error('Split invariant failed: sum mismatch');
+  if (parts.some(p => p > limitPaise)) throw new Error('Split invariant failed: part exceeds limit');
+  return parts.map(p => p / 100);
+}
+
+function doSplit() {
+  const amt = parseFloat(document.getElementById('bill-amount').value);
+  let lim = parseFloat(document.getElementById('pay-limit').value);
+  if (!amt || amt <= 0) { toast('Enter a valid bill amount.', 'error'); return; }
+  if (!lim || lim <= 0) { toast('Enter a valid per-payment limit.', 'error'); return; }
+  if (lim > MAX_LIMIT) {
+    lim = MAX_LIMIT;
+    document.getElementById('pay-limit').value = MAX_LIMIT;
+    toast('Limit capped at ₹1,999.', 'error');
+  }
+  let parts;
+  try { parts = splitBill(amt, lim); }
+  catch (e) { toast('Could not split that amount: ' + e.message, 'error'); return; }
+
+  splits = parts.map(a => ({ amount: a, status: 'pending' }));
+  currentSplitIndex = 0;
+  receiptVerified = false;
+  lastReceiptAmount = null;
+  resetVerificationUI();
+
+  document.getElementById('pay-merchant').innerHTML =
+    `<svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M20 6L9 17l-5-5"/></svg>
+     <span>${escapeHtml(currentMerchantName)}</span>
+     <button onclick="copyUPI()" title="Copy UPI ID">Copy UPI ID</button>`;
+
+  renderSplits();
+  showScreen('screen-pay');
+}
+
+function copyUPI() {
+  if (!currentUPI) return;
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(currentUPI)
+      .then(() => toast('UPI ID copied: ' + currentUPI, 'ok'))
+      .catch(() => toast(currentUPI));
+  } else {
+    toast(currentUPI);
+  }
+}
+
+/* ============================================================
+   Pay screen rendering
+============================================================ */
+function renderSplits() {
+  const list = document.getElementById('split-list');
+  list.innerHTML = splits.map((s, i) => {
+    const isCurrent = (i === currentSplitIndex && s.status === 'pending');
+    const settled = s.status !== 'pending';
+    const statusClass = s.status === 'paid' ? 'status-paid' : s.status === 'failed' ? 'status-failed' : isCurrent ? 'status-current' : 'status-pending';
+    const statusText = s.status === 'paid' ? '✓ Paid' : s.status === 'failed' ? '✗ Failed' : isCurrent ? '● Paying now' : 'Pending';
+    const failed = s.status === 'failed';
+    return `
+      <div class="split-item glass ${isCurrent ? 'current' : ''} ${settled ? 'settled' : ''} ${failed ? 'retryable' : ''}"
+           ${failed ? `onclick="retrySplit(${i})" title="Tap to retry this payment"` : ''}>
+        <div class="split-info">
+          <div class="split-num">Payment ${i + 1} of ${splits.length}</div>
+          <div class="split-amt">${fmt(s.amount)}</div>
+          ${failed ? '<div class="split-hint">Tap to retry</div>' : ''}
+        </div>
+        <div class="split-status ${statusClass}">${statusText}</div>
+      </div>`;
+  }).join('');
+
+  const paidCount = splits.filter(s => s.status === 'paid').length;
+  const paidSum = splits.filter(s => s.status === 'paid').reduce((a, s) => a + s.amount, 0);
+  document.getElementById('paid-count').innerHTML = `<b>${paidCount}</b> of <b>${splits.length}</b> paid`;
+  document.getElementById('paid-total').textContent = fmt(paidSum);
+  document.getElementById('progress-fill').style.width = (splits.length ? (paidCount / splits.length * 100) : 0) + '%';
+
+  updateVerifyCard();
+}
+
+function updatePayButton() {
+  const s = splits[currentSplitIndex];
+  if (!s) return;
+  document.getElementById('pay-btn-label').textContent = `PAY PART ${currentSplitIndex + 1} OF ${splits.length} · ${currentMerchantName.toUpperCase()}`;
+  document.getElementById('pay-btn-amount').textContent = fmt(s.amount);
+}
+
+function retrySplit(i) {
+  if (!splits[i] || splits[i].status !== 'failed') return;
+  if (!confirm(`Retry payment ${i + 1} of ${fmt(splits[i].amount)}?`)) return;
+  splits[i].status = 'pending';
+  currentSplitIndex = i;
+  buzz(30);
+  renderSplits();
+  updatePayButton();
+  document.getElementById('pay-dock').classList.add('visible');
+  toast('Split marked pending again — tap Pay to retry.', 'ok');
+}
+
+/* ============================================================
+   Verify last payment (on-device OCR, image never uploaded)
+============================================================ */
+function lastSettledIndex() {
+  for (let i = splits.length - 1; i >= 0; i--) if (splits[i].status !== 'pending') return i;
+  return -1;
+}
+function updateVerifyCard() {
+  const card = document.getElementById('verify-card');
+  const idx = lastSettledIndex();
+  if (idx === -1) { card.style.display = 'none'; return; }
+  card.style.display = 'block';
+  lastReceiptAmount = splits[idx].amount;
+  document.getElementById('verify-amt').textContent = fmt(lastReceiptAmount) + ` · part ${idx + 1}`;
+  // show the Finish button only once every split is settled
+  const anyPending = splits.some(s => s.status === 'pending');
+  document.getElementById('btn-finish-split').style.display = anyPending ? 'none' : 'flex';
+}
+
+let tesseractLoader = null;
+function loadTesseract() {
+  if (window.Tesseract) return Promise.resolve();
+  if (!tesseractLoader) {
+    tesseractLoader = new Promise((resolve, reject) => {
+      const s = document.createElement('script');
+      s.src = 'https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js';
+      s.onload = resolve;
+      s.onerror = () => reject(new Error('offline'));
+      document.head.appendChild(s);
     });
   }
+  return tesseractLoader;
+}
 
-  /* ---------- Theme ---------- */
-  function applyTheme(mode) {
-    document.documentElement.classList.toggle("dark", mode === "dark");
-    localStorage.setItem(THEME_KEY, mode);
-  }
-  function initTheme() {
-    var saved = localStorage.getItem(THEME_KEY);
-    if (saved) { applyTheme(saved); return; }
-    var prefersDark = window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches;
-    applyTheme(prefersDark ? "dark" : "light");
-  }
-  $("themeToggle").addEventListener("click", function () {
-    var isDark = document.documentElement.classList.contains("dark");
-    applyTheme(isDark ? "light" : "dark");
-  });
+function setVerifyStatus(html, cls) {
+  const el = document.getElementById('verify-status');
+  el.innerHTML = html;
+  el.className = 'verify-status show ' + (cls || '');
+}
 
-  /* ---------- Orientation Startup Lock ---------- */
-  function lockToCurrentOrientation() {
-    if (screen.orientation && typeof screen.orientation.lock === "function") {
-      var currentType = screen.orientation.type;
-      screen.orientation.lock(currentType).catch(function () {});
-    }
-  }
+async function handleReceipt(e) {
+  const file = e.target.files[0];
+  e.target.value = '';
+  if (!file || verifying) return;
+  if (!file.type.startsWith('image/')) { toast('Please choose an image file.', 'error'); return; }
 
-  /* ---------- QR scanning ---------- */
-  function startScanner() {
-    $("scanError").textContent = "";
-    if (typeof Html5Qrcode === "undefined") {
-      $("scanError").textContent = "Camera library failed to load. Check your connection and try again, or enter the UPI ID manually below.";
-      return;
-    }
-    $("scanIdle").style.display = "none";
-    $("qrVideo").style.display = "none";
-    var readerRegionId = "qrRegion";
-    var frame = $("scanFrame");
-    if (!$(readerRegionId)) {
-      var div = document.createElement("div");
-      div.id = readerRegionId;
-      div.style.width = "100%";
-      div.style.height = "100%";
-      frame.insertBefore(div, frame.firstChild);
-    }
-    $("reticle").style.display = "block";
-    $("scanHint").style.display = "block";
-    $("startScanBtn").textContent = "Stop camera";
-    state.scanning = true;
+  verifying = true;
+  document.getElementById('btn-upload-receipt').disabled = true;
+  setVerifyStatus('<span class="spinner"></span>Reading receipt on this device…', 'busy');
 
-    state.qrScanner = new Html5Qrcode(readerRegionId, { verbose: false });
-    var config = { fps: 10, qrbox: { width: 220, height: 220 }, aspectRatio: 1.0 };
+  const reader = new FileReader();
+  reader.onload = () => {
+    const thumb = document.getElementById('receipt-thumb');
+    thumb.src = reader.result;
+    thumb.style.display = 'block';
+  };
+  reader.readAsDataURL(file);
 
-    state.qrScanner.start(
-      { facingMode: "environment" },
-      config,
-      function onScanSuccess(decodedText) {
-        var parsed = parsePaymentQr(decodedText);
-        if (!parsed) {
-          $("scanError").textContent = "That doesn't look like a supported UPI/payment QR code. Try again or enter details manually.";
-          return;
+  let text = '';
+  let ocrOk = false;
+  try {
+    await loadTesseract();
+    const result = await Tesseract.recognize(file, 'eng', {
+      logger: m => {
+        if (m && m.status === 'recognizing text' && m.progress != null) {
+          setVerifyStatus(`<span class="spinner"></span>Reading receipt on this device… ${Math.round(m.progress * 100)}%`, 'busy');
         }
-        handleMerchantResolved(parsed);
-        stopScanner();
-      },
-      function onScanFailure() {}
-    ).catch(function (err) {
-      state.scanning = false;
-      $("startScanBtn").textContent = "Start camera";
-      $("scanIdle").style.display = "flex";
-      $("reticle").style.display = "none";
-      $("scanHint").style.display = "none";
-      var msg = "Couldn't access the camera.";
-      if (String(err).toLowerCase().indexOf("permission") !== -1 || String(err).toLowerCase().indexOf("notallowed") !== -1) {
-        msg = "Camera permission was denied. Allow camera access in your browser settings, or enter the UPI ID manually below.";
-      } else if (location.protocol !== "https:" && location.hostname !== "localhost") {
-        msg = "Camera access needs HTTPS.";
       }
-      $("scanError").textContent = msg;
     });
+    text = (result && result.data && result.data.text) || '';
+    ocrOk = text.trim().length > 0;
+  } catch (err) {
+    ocrOk = false;
   }
 
-  function stopScanner() {
-    if (state.qrScanner && state.scanning) {
-      state.qrScanner.stop().then(function () {
-        state.qrScanner.clear();
-      }).catch(function () {});
-    }
-    state.scanning = false;
-    $("startScanBtn").textContent = "Start camera";
-    $("reticle").style.display = "none";
-    $("scanHint").style.display = "none";
-    var region = $("qrRegion");
-    if (region) region.remove();
-    $("scanIdle").style.display = "flex";
-  }
+  verifying = false;
+  document.getElementById('btn-upload-receipt').disabled = false;
+  buzz(40);
 
-  $("startScanBtn").addEventListener("click", function () {
-    if (state.scanning) stopScanner();
-    else startScanner();
-  });
-
-  /* ---------- QR image upload ---------- */
-  $("uploadQrBtn").addEventListener("click", function () { $("qrFileInput").click(); });
-
-  $("qrFileInput").addEventListener("change", function (e) {
-    var file = e.target.files && e.target.files[0];
-    e.target.value = "";
-    if (!file) return;
-    $("scanError").textContent = "";
-    if (typeof Html5Qrcode === "undefined") {
-      $("scanError").textContent = "QR library failed to load.";
-      return;
-    }
-    if (state.scanning) stopScanner();
-    $("uploadQrBtn").disabled = true;
-    var originalLabel = $("uploadQrBtn").textContent;
-    $("uploadQrBtn").textContent = "Reading image…";
-    var fileScanner = new Html5Qrcode("qrFileRegion", { verbose: false });
-    fileScanner.scanFile(file, false).then(function (decodedText) {
-      var parsed = parsePaymentQr(decodedText);
-      if (!parsed) {
-        $("scanError").textContent = "Couldn't find a supported UPI/payment QR code in that image.";
-      } else {
-        handleMerchantResolved(parsed);
+  if (ocrOk) {
+    const successHit = /success(ful|fully)?|completed|credited/i.test(text);
+    const failedHit = /failed|declined|reversed/i.test(text);
+    const refHit = /(UPI|UTR|Ref(?:erence)?|Txn|ID)\D{0,10}\d{6,}|\b\d{12,22}\b/i.test(text);
+    const digitsOnly = text.replace(/[^0-9.]/g, ' ');
+    const expected = lastReceiptAmount;
+    let amtHit = false;
+    if (expected != null) {
+      const variants = [
+        expected.toFixed(2),
+        String(expected),
+        Number(expected).toLocaleString('en-IN', {minimumFractionDigits:2}),
+        Number(expected).toLocaleString('en-IN')
+      ];
+      amtHit = variants.some(v => text.includes(v));
+      if (!amtHit) {
+        const nums = digitsOnly.split(/\s+/).filter(Boolean).map(parseFloat);
+        amtHit = nums.some(n => Math.abs(n - expected) < 0.005);
       }
-    }).catch(function () {
-      $("scanError").textContent = "Couldn't read a QR code from that image.";
-    }).finally(function () {
-      $("uploadQrBtn").disabled = false;
-      $("uploadQrBtn").textContent = originalLabel;
-      safeClearScanner(fileScanner);
-    });
+    }
+
+    if (failedHit && !successHit) {
+      setVerifyStatus('⚠️ The receipt looks like a <b>failed</b> payment. Check your UPI app / bank SMS before marking it paid.', 'bad');
+    } else if (successHit || amtHit || refHit) {
+      receiptVerified = true;
+      const found = [];
+      if (successHit) found.push('success status');
+      if (amtHit) found.push(`amount ${fmt(expected)}`);
+      if (refHit) found.push('UPI reference no.');
+      setVerifyStatus(`✅ Looks good — found ${found.join(', ')} in the receipt.`, 'ok');
+      toast('Receipt verified ✓', 'ok');
+    } else {
+      setVerifyStatus("🤔 We couldn't confidently read a success status or the amount in that screenshot. Verification is best-effort — you can continue regardless.", 'bad');
+    }
+  } else {
+    setVerifyStatus('📵 Could not run on-device text reading (offline or unreadable image). This check is optional and never blocks your split — you can continue.', 'bad');
+  }
+  document.getElementById('verify-actions').style.display = 'flex';
+}
+
+function skipVerification() {
+  resetVerification();
+  toast('Verification skipped — this is optional.');
+  if (splits.length && !splits.some(s => s.status === 'pending')) finishSplit();
+}
+function resetVerification() {
+  document.getElementById('receipt-thumb').style.display = 'none';
+  document.getElementById('verify-actions').style.display = 'none';
+  document.getElementById('verify-status').className = 'verify-status';
+}
+function resetVerificationUI() {
+  receiptVerified = false;
+  resetVerification();
+  document.getElementById('verify-card').style.display = 'none';
+  document.getElementById('btn-finish-split').style.display = 'none';
+}
+
+/* ============================================================
+   Payment flow: deep-link → UPI app → return → confirm modal
+============================================================ */
+function buildUpiLink(amount) {
+  const p = new URLSearchParams();
+  p.set('pa', currentUPI);
+  p.set('pn', currentMerchantName || 'Merchant');
+  p.set('am', amount.toFixed(2));
+  p.set('cu', 'INR');
+  p.set('tn', `Splitr part ${currentSplitIndex + 1}/${splits.length}`);
+  return 'upi://pay?' + p.toString();
+}
+function initiatePayment() {
+  const s = splits[currentSplitIndex];
+  if (!s || s.status !== 'pending') return;
+  awaitingConfirmation = true;
+  handoffDone = false;
+  wentHidden = false;
+  buzz(30);
+  window.location.href = buildUpiLink(s.amount);
+  clearTimeout(window._payFallback);
+  window._payFallback = setTimeout(() => {
+    if (!awaitingConfirmation || handoffDone) return;
+    if (wentHidden) { showConfirmModal(); }
+    else {
+      // page never lost visibility → UPI app probably didn't open (iOS / no app installed)
+      toast(`UPI app didn't open? Pay ${fmt(s.amount)} manually to ${currentUPI}, then tap Pay again or use the list.`);
+    }
+  }, 2600);
+}
+function showConfirmModal() {
+  if (!awaitingConfirmation || handoffDone) return;
+  if (document.hidden) return;   // never show while user is still in the UPI app
+  handoffDone = true;
+  clearTimeout(window._payFallback);
+  const s = splits[currentSplitIndex];
+  if (!s) return;
+  document.getElementById('modal-amt').textContent = fmt(s.amount);
+  document.getElementById('modal-sub').textContent =
+    `You were paying part ${currentSplitIndex + 1} of ${splits.length} to ${currentMerchantName}. Did it go through?`;
+  document.getElementById('modal-confirm').classList.add('active');
+}
+function confirmPayment(success) {
+  document.getElementById('modal-confirm').classList.remove('active');
+  awaitingConfirmation = false;
+  buzz(success ? 40 : [60, 40, 60]);
+  const s = splits[currentSplitIndex];
+  if (!s) return;
+  s.status = success ? 'paid' : 'failed';
+  if (success) toast(`${fmt(s.amount)} marked as paid ✓`, 'ok');
+  else toast(`${fmt(s.amount)} marked as failed — tap it in the list to retry.`, 'error');
+
+  const nextPending = splits.findIndex(x => x.status === 'pending');
+  if (nextPending === -1) {
+    currentSplitIndex = splits.length - 1;
+    renderSplits();
+    document.getElementById('pay-dock').classList.remove('visible');
+    // bring the verify/finish card into view so it's impossible to miss
+    setTimeout(() => {
+      document.getElementById('verify-card').scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }, 250);
+    toast('All splits settled — optionally verify the receipt, then tap Finish.', 'ok');
+    return;
+  }
+  currentSplitIndex = nextPending;
+  renderSplits();
+  updatePayButton();
+  const items = document.querySelectorAll('.split-item');
+  if (items[currentSplitIndex]) items[currentSplitIndex].scrollIntoView({ behavior: 'smooth', block: 'center' });
+}
+
+document.addEventListener('visibilitychange', () => {
+  if (document.hidden) {
+    if (awaitingConfirmation && !handoffDone) wentHidden = true;
+  } else {
+    if (awaitingConfirmation && !handoffDone && wentHidden) setTimeout(showConfirmModal, 400);
+  }
+});
+window.addEventListener('focus', () => {
+  if (awaitingConfirmation && !handoffDone && wentHidden) setTimeout(showConfirmModal, 400);
+});
+window.addEventListener('pageshow', () => {
+  if (awaitingConfirmation && !handoffDone && wentHidden) setTimeout(showConfirmModal, 400);
+});
+
+/* ============================================================
+   Done / Share / History
+============================================================ */
+function finishSplit() {
+  document.getElementById('pay-dock').classList.remove('visible');
+
+  const total = splits.reduce((a, s) => a + s.amount, 0);
+  const paid = splits.filter(s => s.status === 'paid').length;
+  const failed = splits.filter(s => s.status === 'failed').length;
+
+  document.getElementById('sum-total').textContent = fmt(total);
+  document.getElementById('sum-paid').textContent = paid;
+  document.getElementById('sum-failed').textContent = failed;
+  document.getElementById('sum-splits').textContent = splits.length;
+  document.getElementById('receipt-verified-badge').style.display = receiptVerified ? 'block' : 'none';
+
+  saveHistory({
+    merchant: currentMerchantName,
+    upi: currentUPI,
+    total, paid, failed,
+    splits: splits.length,
+    verified: receiptVerified,
+    parts: splits.map(s => ({ amount: s.amount, status: s.status })),
+    date: new Date().toISOString()
   });
 
-  /* ---------- Choose destination screen ---------- */
-  function initShopOption() {
-    $("shopOptTitle").textContent = "Pay " + SHOP_NAME;
-    $("shopOptSub").textContent = SHOP_VPA;
-    $("shopInitial").textContent = SHOP_NAME.charAt(0).toUpperCase();
-  }
+  showScreen('screen-done');
+}
 
-  $("payMyShopBtn").addEventListener("click", function () {
-    handleMerchantResolved({ vpa: SHOP_VPA, name: SHOP_NAME, amount: null, currency: null, crcValid: null, format: "fixed-shop" });
+function shareSummary() {
+  const total = splits.reduce((a, s) => a + s.amount, 0);
+  const lines = [];
+  lines.push(`Splitr — ${currentMerchantName} (${currentUPI})`);
+  lines.push(`Bill: ${fmt(total)} split into ${splits.length} payment${splits.length > 1 ? 's' : ''}`);
+  splits.forEach((s, i) => {
+    const mark = s.status === 'paid' ? '✓' : s.status === 'failed' ? '✗' : '…';
+    lines.push(`${mark} Part ${i + 1}: ${fmt(s.amount)}`);
   });
+  if (receiptVerified) lines.push('✓ Receipt verified on device');
+  lines.push(new Date().toLocaleString('en-IN'));
+  const text = lines.join('\n');
 
-  $("scanAnotherBtn").addEventListener("click", function () { showScreen("scan"); });
-  $("backToChooseBtn").addEventListener("click", function () { showScreen("choose"); });
-  $("chooseHistoryBtn").addEventListener("click", function () { renderHistory(); showScreen("history"); });
-
-  /* ---------- Manual entry ---------- */
-  $("useManualBtn").addEventListener("click", function () {
-    var vpa = $("manualVpa").value.trim();
-    var name = $("manualName").value.trim();
-    if (!vpa || vpa.indexOf("@") === -1) {
-      $("scanError").textContent = "Enter a valid UPI ID, e.g. name@bank";
-      return;
-    }
-    $("scanError").textContent = "";
-    handleMerchantResolved({ vpa: vpa, name: name, amount: null, currency: null, crcValid: null, format: "manual" });
-  });
-
-  function handleMerchantResolved(result) {
-    state.vpa = result.vpa;
-    state.name = result.name || result.vpa.split("@")[0];
-    $("merchantNameDisplay").textContent = state.name;
-    $("merchantVpaDisplay").textContent = state.vpa;
-    $("merchantInitial").textContent = state.name.charAt(0).toUpperCase();
-    showScreen("amount");
-
-    if (result.amount) {
-      $("billAmount").value = String(result.amount);
-      validateAmountScreen();
-    }
-    if (result.currency && result.currency !== "INR") {
-      showToast("QR currency is " + result.currency);
-    }
-    if (result.crcValid === false) {
-      showToast("QR checksum didn't match");
-    }
-    setTimeout(function () { $("billAmount").focus(); }, 250);
+  if (navigator.share) {
+    navigator.share({ title: 'Splitr payment summary', text }).catch(() => {});
+  } else if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(text)
+      .then(() => toast('Summary copied to clipboard', 'ok'))
+      .catch(() => toast('Could not share on this browser.', 'error'));
+  } else {
+    toast('Sharing is not supported on this browser.', 'error');
   }
+}
 
-  $("changeMerchantBtn").addEventListener("click", function () { showScreen("choose"); });
-  $("backToScanBtn").addEventListener("click", function () { showScreen("choose"); });
-
-  /* ---------- Amount screen ---------- */
-  function sanitizeDecimalInput(el) {
-    el.value = el.value.replace(/[^0-9.]/g, "").replace(/(\..*)\./g, "$1");
+function cancelSplit() {
+  if (splits.some(s => s.status !== 'pending')) {
+    if (!confirm('Some payments are already marked. Cancel and go to the summary?')) return;
+    finishSplit();
+  } else {
+    if (!confirm('Cancel this split? Nothing has been paid yet.')) return;
+    splits = [];
+    showScreen('screen-start');
   }
-  $("billAmount").addEventListener("input", function () {
-    sanitizeDecimalInput(this);
-    validateAmountScreen();
-  });
-  $("limitInput").addEventListener("input", function () {
-    this.value = this.value.replace(/[^0-9]/g, "");
-    var v = parseInt(this.value || "0", 10);
-    $("limitLabel").textContent = v ? v.toLocaleString("en-IN") : "0";
-    validateAmountScreen();
-  });
+}
 
-  function validateAmountScreen() {
-    var amount = parseFloat($("billAmount").value);
-    var limit = parseInt($("limitInput").value || "0", 10);
-    var errEl = $("amountError");
-    var preview = $("previewLine");
-    errEl.textContent = "";
-    preview.innerHTML = "&nbsp;";
-    $("toSplitBtn").disabled = true;
+function resetApp() {
+  splits = [];
+  currentSplitIndex = 0;
+  currentUPI = '';
+  currentMerchantName = '';
+  awaitingConfirmation = false;
+  handoffDone = false;
+  wentHidden = false;
+  receiptVerified = false;
+  document.getElementById('bill-amount').value = '';
+  document.getElementById('amount-preview').textContent = '0';
+  document.getElementById('pay-limit').value = MAX_LIMIT;
+  updateLimitInfo();
+  resetVerificationUI();
+  showScreen('screen-start');
+}
 
-    if (!$("billAmount").value) return;
-    if (isNaN(amount) || amount <= 0) {
-      errEl.textContent = "Enter an amount greater than ₹0";
-      return;
-    }
-    if (amount > 10000000) {
-      errEl.textContent = "That's a very large bill";
-      return;
-    }
-    if (!limit || limit <= 0) {
-      errEl.textContent = "Per-payment limit must be greater than ₹0";
-      return;
-    }
-    if (limit > MAX_LIMIT) {
-      errEl.textContent = "Per-payment limit can't exceed " + formatINR(MAX_LIMIT);
-      return;
-    }
-    try {
-      var parts = splitBill(amount, limit);
-      var n = parts.length;
-      preview.innerHTML = n === 1
-        ? "Paid in <strong>1 payment</strong> of " + formatINR(parts[0])
-        : "Split into <strong>" + n + " payments</strong> of up to " + formatINR(limit) + " each";
-      $("toSplitBtn").disabled = false;
-    } catch (e) {
-      errEl.textContent = e.message;
-    }
+function loadHistory() {
+  try { return JSON.parse(localStorage.getItem('splitr_history') || '[]'); }
+  catch (e) { return []; }
+}
+function saveHistory(entry) {
+  const h = loadHistory();
+  h.unshift(entry);
+  try { localStorage.setItem('splitr_history', JSON.stringify(h.slice(0, 100))); } catch (e) {}
+}
+function renderHistory() {
+  const h = loadHistory();
+  const el = document.getElementById('history-list');
+  if (!h.length) {
+    el.innerHTML = `<div class="empty-state glass">No splits yet.<br>Your past splits will appear here.</div>`;
+    return;
   }
+  el.innerHTML = h.map(x => {
+    const d = new Date(x.date);
+    const dateStr = d.toLocaleDateString('en-IN', { day: 'numeric', month: 'short' }) + ', ' + d.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' });
+    return `
+      <div class="history-item glass">
+        <div class="h-top">
+          <div class="h-merchant">${escapeHtml(x.merchant)}${x.verified ? ' <span class="h-verified">✓ verified</span>' : ''}</div>
+          <div class="h-date">${dateStr}</div>
+        </div>
+        <div class="h-bottom">
+          <span>Total <b>${fmt(x.total)}</b> · ${x.splits} part${x.splits > 1 ? 's' : ''}</span>
+          <span style="color:var(--accent)"><b>${x.paid}</b> paid${x.failed ? ` · <span style="color:var(--danger)">${x.failed} failed</span>` : ''}</span>
+        </div>
+      </div>`;
+  }).join('');
+}
+function clearHistory() {
+  if (!confirm('Clear all saved split history from this device?')) return;
+  try { localStorage.removeItem('splitr_history'); } catch (e) {}
+  renderHistory();
+  toast('History cleared.', 'ok');
+}
 
-  $("toSplitBtn").addEventListener("click", function () {
-    var amount = parseFloat($("billAmount").value);
-    var limit = parseInt($("limitInput").value, 10);
-    if (limit > MAX_LIMIT) {
-      $("amountError").textContent = "Per-payment limit can't exceed " + formatINR(MAX_LIMIT);
-      return;
-    }
-    try {
-      var parts = splitBill(amount, limit);
-      state.billAmount = amount;
-      state.limit = limit;
-      state.splits = parts.map(function (p) { return { amount: p, status: "pending" }; });
-      state.anyPaid = false;
-      resetVerifyUI();
-      renderSplitScreen();
-      showScreen("pay");
-    } catch (e) {
-      $("amountError").textContent = e.message;
-    }
-  });
+/* ============================================================
+   Init
+============================================================ */
+document.getElementById('saved-shop-name').textContent = SAVED_SHOP.name;
+document.getElementById('saved-shop-upi').textContent = SAVED_SHOP.upi;
+document.getElementById('pay-limit').value = MAX_LIMIT;
+updateLimitInfo();
 
-  /* ---------- Split / Pay screen ---------- */
-  function renderSplitScreen() {
-    $("totalAmountDisplay").textContent = formatINR(state.billAmount);
-    var list = $("splitList");
-    list.innerHTML = "";
-    state.splits.forEach(function (split, idx) {
-      var row = document.createElement("div");
-      row.className = "split-item";
-
-      var indexEl = document.createElement("div");
-      indexEl.className = "split-index";
-      indexEl.textContent = idx + 1;
-
-      var main = document.createElement("div");
-      main.className = "split-main";
-      var amountEl = document.createElement("div");
-      amountEl.className = "split-amount";
-      amountEl.textContent = formatINR(split.amount);
-      var statusEl = document.createElement("div");
-      statusEl.className = "split-status " + split.status;
-      statusEl.textContent = split.status === "pending" ? "Not paid yet" : (split.status === "paid" ? "Marked paid" : "Marked failed");
-      main.appendChild(amountEl);
-      main.appendChild(statusEl);
-
-      var actions = document.createElement("div");
-      actions.className = "split-actions";
-
-      if (split.status === "pending") {
-        var payBtn = document.createElement("button");
-        payBtn.className = "pill-btn pay";
-        payBtn.textContent = "Pay";
-        payBtn.addEventListener("click", function () { openUpiApp(idx); });
-        var okBtn = document.createElement("button");
-        okBtn.className = "pill-btn icon-only mark-ok";
-        okBtn.setAttribute("aria-label", "Mark payment " + (idx + 1) + " as paid");
-        okBtn.innerHTML = "✓";
-        okBtn.addEventListener("click", function () { setSplitStatus(idx, "paid"); });
-        var failBtn = document.createElement("button");
-        failBtn.className = "pill-btn icon-only mark-fail";
-        failBtn.setAttribute("aria-label", "Mark payment " + (idx + 1) + " as failed");
-        failBtn.innerHTML = "✕";
-        failBtn.addEventListener("click", function () { setSplitStatus(idx, "failed"); });
-        actions.appendChild(payBtn);
-        actions.appendChild(okBtn);
-        actions.appendChild(failBtn);
-      } else {
-        var retryBtn = document.createElement("button");
-        retryBtn.className = "pill-btn";
-        retryBtn.textContent = "Reset";
-        retryBtn.addEventListener("click", function () { setSplitStatus(idx, "pending"); });
-        actions.appendChild(retryBtn);
-      }
-
-      row.appendChild(indexEl);
-      row.appendChild(main);
-      row.appendChild(actions);
-      list.appendChild(row);
-    });
-    updatePaySummary();
-    maybeShowVerifyCard();
-  }
-
-  function setSplitStatus(idx, status) {
-    state.splits[idx].status = status;
-    if (status !== "pending") state.anyPaid = true;
-    if (idx === state.splits.length - 1) resetVerifyUI();
-    renderSplitScreen();
-  }
-
-  function updatePaySummary() {
-    var paid = state.splits.filter(function (s) { return s.status === "paid"; }).length;
-    var failed = state.splits.filter(function (s) { return s.status === "failed"; }).length;
-    var resolved = paid + failed;
-    var total = state.splits.length;
-    $("paySummaryMeta").textContent = paid + " of " + total + " paid" + (failed ? " · " + failed + " failed" : "");
-    $("progressFill").style.width = (resolved / total * 100) + "%";
-    $("finishBtn").disabled = resolved < total;
-    updateStepper("pay");
-  }
-
-  function openUpiApp(idx) {
-    var split = state.splits[idx];
-    var note = "Split " + (idx + 1) + " of " + state.splits.length + (state.name ? " to " + state.name : "");
-    var uri = buildUpiUri(state.vpa, state.name, split.amount, note);
-    window.location.href = uri;
-    setTimeout(function () {
-      showToast("If nothing opened, no UPI app was found on this device.");
-    }, 900);
-  }
-
-  $("finishBtn").addEventListener("click", function () {
-    saveToHistory();
-    var paid = state.splits.filter(function (s) { return s.status === "paid"; }).length;
-    var failed = state.splits.filter(function (s) { return s.status === "failed"; }).length;
-    $("doneTotal").textContent = formatINR(state.billAmount);
-    $("donePaid").textContent = paid;
-    $("doneFailed").textContent = failed;
-    $("doneSub").textContent = failed
-      ? "Recorded on this device. You can retry failed payments any time from history."
-      : "Recorded on this device. Nice work.";
-    $("doneVerifiedBadge").hidden = !(state.verification && state.verification.verified);
-    showScreen("done");
-  });
-
-  $("cancelSessionBtn").addEventListener("click", function () {
-    if (confirm("Discard this split? Nothing has been saved yet.")) {
-      resetSession();
-      showScreen("choose");
-    }
-  });
-
-  $("newSplitBtn").addEventListener("click", function () {
-    resetSession();
-    showScreen("choose");
-  });
-
-  function resetSession() {
-    state.vpa = ""; state.name = ""; state.billAmount = 0; state.splits = []; state.anyPaid = false;
-    resetVerifyUI();
-    $("billAmount").value = "";
-    $("manualVpa").value = "";
-    $("manualName").value = "";
-    $("amountError").textContent = "";
-    $("previewLine").innerHTML = "&nbsp;";
-    $("toSplitBtn").disabled = true;
-  }
-
-  /* ---------- History ---------- */
-  function loadHistory() {
-    try {
-      return JSON.parse(localStorage.getItem(STORAGE_KEY) || "[]");
-    } catch (e) { return []; }
-  }
-  function saveToHistory() {
-    var history = loadHistory();
-    history.unshift({
-      name: state.name,
-      vpa: state.vpa,
-      total: state.billAmount,
-      limit: state.limit,
-      splits: state.splits.map(function (s) { return { amount: s.amount, status: s.status }; }),
-      receiptVerified: !!(state.verification && state.verification.verified),
-      timestamp: Date.now()
-    });
-    if (history.length > 100) history = history.slice(0, 100);
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(history));
-  }
-  function renderHistory() {
-    var history = loadHistory();
-    var container = $("historyList");
-    container.innerHTML = "";
-    if (!history.length) {
-      container.innerHTML = '<div class="empty-state">No split payments yet. Once you finish a split, it will show up here.</div>';
-      return;
-    }
-    history.forEach(function (h) {
-      var item = document.createElement("div");
-      item.className = "history-item";
-      var date = new Date(h.timestamp);
-      var paid = h.splits.filter(function (s) { return s.status === "paid"; }).length;
-      var main = document.createElement("div");
-      main.className = "history-main";
-      var strong = document.createElement("strong");
-      strong.textContent = h.name || h.vpa;
-      var span = document.createElement("span");
-      span.textContent = date.toLocaleDateString("en-IN", { day: "numeric", month: "short" }) + " · " + paid + "/" + h.splits.length + " paid" + (h.receiptVerified ? " · ✓ Verified" : "");
-      main.appendChild(strong); main.appendChild(span);
-      var amt = document.createElement("div");
-      amt.className = "history-amount";
-      amt.textContent = formatINR(h.total);
-      item.appendChild(main); item.appendChild(amt);
-      container.appendChild(item);
-    });
-  }
-  $("viewHistoryBtn").addEventListener("click", function () {
-    renderHistory();
-    showScreen("history");
-  });
-  $("closeHistoryBtn").addEventListener("click", function () { showScreen("choose"); });
-  $("clearHistoryBtn").addEventListener("click", function () {
-    if (confirm("Clear all local history? This can't be undone.")) {
-      localStorage.removeItem(STORAGE_KEY);
-      renderHistory();
-      showToast("History cleared");
-    }
-  });
-
-  /* ---------- Init ---------- */
-  initTheme();
-  initShopOption();
-  lockToCurrentOrientation(); // Locks app orientation to whatever position the device is currently holding
-  showScreen("choose");
-
-  if ("serviceWorker" in navigator) {
-    window.addEventListener("load", function () {
-      navigator.serviceWorker.register("sw.js").catch(function () {});
-    });
-  }
-})();
+if ('serviceWorker' in navigator) {
+  navigator.serviceWorker.register('./sw.js').catch(() => {});
+}
 </script>
 </body>
 </html>
